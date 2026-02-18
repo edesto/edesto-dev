@@ -20,6 +20,14 @@ class Board:
     fqbn: str = ""
     core: str = ""
     core_url: str = ""
+    openocd_target: str = ""
+
+
+@dataclass
+class JtagConfig:
+    """OpenOCD JTAG/SWD configuration."""
+    interface: str   # OpenOCD interface config name: "stlink", "jlink", "cmsis-dap"
+    target: str      # OpenOCD target config name: "stm32f4x", "nrf52", "esp32"
 
 
 @dataclass

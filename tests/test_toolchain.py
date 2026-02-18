@@ -47,3 +47,22 @@ class TestToolchainABC:
         assert "upload_command" in abstract_methods
         assert "serial_config" in abstract_methods
         assert "board_info" in abstract_methods
+
+
+from edesto_dev.toolchain import JtagConfig
+
+class TestJtagConfig:
+    def test_jtag_config_fields(self):
+        cfg = JtagConfig(interface="stlink", target="stm32f4x")
+        assert cfg.interface == "stlink"
+        assert cfg.target == "stm32f4x"
+
+    def test_board_openocd_target_defaults_empty(self):
+        from edesto_dev.toolchain import Board
+        b = Board(slug="test", name="Test", baud_rate=115200)
+        assert b.openocd_target == ""
+
+    def test_board_openocd_target_set(self):
+        from edesto_dev.toolchain import Board
+        b = Board(slug="test", name="Test", baud_rate=115200, openocd_target="stm32f4x")
+        assert b.openocd_target == "stm32f4x"
