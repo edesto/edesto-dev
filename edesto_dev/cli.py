@@ -5,6 +5,7 @@ from pathlib import Path
 
 import click
 
+from edesto_dev.debug_tools import detect_debug_tools
 from edesto_dev.detect import detect_toolchain, detect_all_boards
 from edesto_dev.toolchains import get_toolchain, list_toolchains
 from edesto_dev.templates import render_from_toolchain
@@ -128,7 +129,8 @@ def init(board, port, toolchain_name):
         click.echo("Error: --board is required when using --port.")
         raise SystemExit(1)
 
-    content = render_from_toolchain(toolchain, board_def, port=port)
+    debug_tools = detect_debug_tools()
+    content = render_from_toolchain(toolchain, board_def, port=port, debug_tools=debug_tools)
 
     skills_path = Path("SKILLS.md")
     copies = [Path("CLAUDE.md"), Path(".cursorrules"), Path("AGENTS.md")]

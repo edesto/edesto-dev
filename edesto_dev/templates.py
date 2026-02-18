@@ -58,7 +58,7 @@ def render_template(board: Board, port: str) -> str:
     )
 
 
-def render_from_toolchain(toolchain, board, port: str) -> str:
+def render_from_toolchain(toolchain, board, port: str, debug_tools: list[str] | None = None) -> str:
     """Render SKILLS.md using a Toolchain and Board."""
     config = toolchain.serial_config(board)
     info = toolchain.board_info(board)
@@ -73,6 +73,7 @@ def render_from_toolchain(toolchain, board, port: str) -> str:
         boot_delay=config.get("boot_delay", 3),
         board_info=info,
         setup_info=toolchain.setup_info(board),
+        debug_tools=debug_tools,
     )
 
 

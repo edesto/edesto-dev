@@ -416,3 +416,26 @@ class TestIntegrationMultiToolchain:
         assert "platformio" in result.output
         assert "espidf" in result.output
         assert "micropython" in result.output
+
+
+class TestInitDebugTools:
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["saleae", "openocd"])
+    def test_init_includes_detected_debug_tools(self, mock_debug, runner):
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            assert result.exit_code == 0
+            content = Path("SKILLS.md").read_text()
+            assert "### Logic Analyzer" in content
+            assert "### JTAG/SWD" in content
+            assert "### Oscilloscope" not in content
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=[])
+    def test_init_no_debug_tools(self, mock_debug, runner):
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            assert result.exit_code == 0
+            content = Path("SKILLS.md").read_text()
+            assert "### Serial Output" in content
+            assert "### Logic Analyzer" not in content
+            assert "### JTAG/SWD" not in content
+            assert "### Oscilloscope" not in content
