@@ -8,7 +8,8 @@ import click
 from edesto_dev.debug_tools import detect_debug_tools
 from edesto_dev.detect import detect_toolchain, detect_all_boards
 from edesto_dev.toolchains import get_toolchain, list_toolchains
-from edesto_dev.templates import render_from_toolchain
+from edesto_dev.toolchain import Board, JtagConfig
+from edesto_dev.templates import render_from_toolchain, render_generic_template
 
 
 @click.group()
@@ -17,11 +18,100 @@ def main():
     pass
 
 
+_PROBES = [
+    ("ST-Link", "stlink"),
+    ("J-Link", "jlink"),
+    ("CMSIS-DAP", "cmsis-dap"),
+]
+
+
+def _jtag_setup(board_def):
+    """Interactive JTAG probe/target setup. Returns (JtagConfig, port_or_None, baud_rate)."""
+    click.echo("\nDebug probe:")
+    for i, (name, _) in enumerate(_PROBES, 1):
+        click.echo(f"  {i}. {name}")
+    click.echo(f"  {len(_PROBES) + 1}. Other")
+    probe_choice = click.prompt("Which probe?", type=int)
+    if 1 <= probe_choice <= len(_PROBES):
+        _, probe_cfg = _PROBES[probe_choice - 1]
+    else:
+        probe_cfg = click.prompt("OpenOCD interface config name (without .cfg)")
+
+    default_target = board_def.openocd_target if board_def.openocd_target else None
+    if default_target:
+        target = click.prompt("OpenOCD target config", default=default_target)
+    else:
+        target = click.prompt("OpenOCD target config (e.g. stm32f4x, nrf52, esp32)")
+
+    jtag_config = JtagConfig(interface=probe_cfg, target=target)
+
+    if click.confirm("Do you have a serial port for monitoring?", default=False):
+        port = click.prompt("Serial port")
+        baud = click.prompt("Baud rate", type=int, default=board_def.baud_rate)
+    else:
+        port = None
+        baud = board_def.baud_rate
+
+    return jtag_config, port, baud
+
+
+def _render_jtag_content(board_def, toolchain, jtag_config, port, baud_rate):
+    """Render SKILLS.md content for a JTAG setup."""
+    debug_tools = detect_debug_tools()
+    if "openocd" not in debug_tools:
+        debug_tools.append("openocd")
+    upload_cmd = f'openocd -f interface/{jtag_config.interface}.cfg -f target/{jtag_config.target}.cfg -c "program build/firmware.elf verify reset exit"'
+    return render_generic_template(
+        board_name=board_def.name,
+        toolchain_name=toolchain.name,
+        port=port,
+        baud_rate=baud_rate if port else board_def.baud_rate,
+        compile_command=toolchain.compile_command(board_def),
+        upload_command=upload_cmd,
+        monitor_command=toolchain.monitor_command(board_def, port) if port else None,
+        boot_delay=toolchain.serial_config(board_def).get("boot_delay", 3),
+        board_info=toolchain.board_info(board_def),
+        setup_info=toolchain.setup_info(board_def),
+        debug_tools=debug_tools,
+        jtag_config=jtag_config,
+    )
+
+
+def _save_jtag_toml(jtag_config, port=None, baud_rate=None):
+    """Save JTAG config to edesto.toml."""
+    toml_parts = [f'[jtag]\ninterface = "{jtag_config.interface}"\ntarget = "{jtag_config.target}"\n']
+    if port:
+        toml_parts.append(f'\n[serial]\nport = "{port}"\nbaud_rate = {baud_rate}\n')
+    Path("edesto.toml").write_text("".join(toml_parts))
+    click.echo("Saved JTAG configuration to edesto.toml")
+
+
+def _write_skills_files(content, board_def, port):
+    """Write SKILLS.md and copies, handling overwrite confirmation."""
+    skills_path = Path("SKILLS.md")
+    copies = [Path("CLAUDE.md"), Path(".cursorrules"), Path("AGENTS.md")]
+
+    if skills_path.exists():
+        if not click.confirm("SKILLS.md already exists. Overwrite?"):
+            click.echo("Aborted.")
+            return
+
+    skills_path.write_text(content)
+    for copy_path in copies:
+        copy_path.write_text(content)
+
+    if port:
+        click.echo(f"Generated SKILLS.md for {board_def.name} on {port}. Also created: CLAUDE.md, .cursorrules, AGENTS.md")
+    else:
+        click.echo(f"Generated SKILLS.md for {board_def.name} (JTAG/SWD). Also created: CLAUDE.md, .cursorrules, AGENTS.md")
+
+
 @main.command()
 @click.option("--board", type=str, help="Board slug (e.g. esp32, arduino-uno). Use 'edesto boards' to list.")
 @click.option("--port", type=str, help="Serial port (e.g. /dev/ttyUSB0, /dev/cu.usbserial-0001).")
 @click.option("--toolchain", "toolchain_name", type=str, help="Toolchain (e.g. arduino, platformio).")
-def init(board, port, toolchain_name):
+@click.option("--upload", "upload_method", type=click.Choice(["serial", "jtag"]), default=None, help="Upload method: serial (default) or jtag.")
+def init(board, port, toolchain_name, upload_method):
     """Generate a SKILLS.md for your board."""
 
     # Resolve toolchain
@@ -32,6 +122,40 @@ def init(board, port, toolchain_name):
             raise SystemExit(1)
     else:
         toolchain = detect_toolchain(Path.cwd())
+
+    # ---- JTAG early path ----
+    if upload_method == "jtag":
+        debug_tools = detect_debug_tools()
+        if "openocd" not in debug_tools:
+            click.echo("Error: OpenOCD is required for JTAG upload but was not found on PATH.")
+            click.echo("Install OpenOCD: https://openocd.org/pages/getting-openocd.html")
+            raise SystemExit(1)
+
+        if not board:
+            click.echo("Error: --board is required for JTAG upload.")
+            raise SystemExit(1)
+
+        # Resolve board_def and toolchain
+        if toolchain:
+            board_def = toolchain.get_board(board)
+        else:
+            board_def = None
+            for tc in list_toolchains():
+                board_def = tc.get_board(board)
+                if board_def:
+                    toolchain = tc
+                    break
+        if not board_def:
+            click.echo(f"Error: Unknown board: {board}. Use 'edesto boards' to list supported boards.")
+            raise SystemExit(1)
+
+        jtag_config, port, baud_rate = _jtag_setup(board_def)
+        content = _render_jtag_content(board_def, toolchain, jtag_config, port, baud_rate)
+        _save_jtag_toml(jtag_config, port, baud_rate)
+        _write_skills_files(content, board_def, port)
+        return
+
+    # ---- Existing USB serial path ----
 
     # Resolve board and port
     if board and port:
@@ -79,7 +203,30 @@ def init(board, port, toolchain_name):
         if not detected:
             if not toolchain:
                 # No toolchain from project files, no boards from USB
-                # Ask user for custom commands
+                # Check for OpenOCD and offer JTAG setup
+                debug_tools = detect_debug_tools()
+                if "openocd" in debug_tools:
+                    click.echo("No boards detected via USB serial.")
+                    if click.confirm("OpenOCD is installed \u2014 set up for JTAG/SWD flashing?", default=True):
+                        board_slug = click.prompt("Board slug (use 'edesto boards' to list)")
+                        board_def = None
+                        for tc in list_toolchains():
+                            board_def = tc.get_board(board_slug)
+                            if board_def:
+                                toolchain = tc
+                                break
+                        if not board_def:
+                            click.echo(f"Error: Unknown board: {board_slug}")
+                            raise SystemExit(1)
+
+                        jtag_config, port, baud_rate = _jtag_setup(board_def)
+                        content = _render_jtag_content(board_def, toolchain, jtag_config, port, baud_rate)
+                        _save_jtag_toml(jtag_config, port, baud_rate)
+                        _write_skills_files(content, board_def, port)
+                        return
+                    # else: fall through to custom manual setup
+
+                # Custom manual setup
                 click.echo("No toolchain detected and no boards found.")
                 click.echo("Let's configure manually.\n")
 
@@ -91,7 +238,6 @@ def init(board, port, toolchain_name):
 
                 # Create custom toolchain
                 from edesto_dev.toolchains.custom import CustomToolchain
-                from edesto_dev.toolchain import Board
                 toolchain = CustomToolchain(compile_cmd=compile_cmd, upload_cmd=upload_cmd, baud_rate=baud)
                 board_def = Board(slug="custom", name=board_name, baud_rate=baud)
 

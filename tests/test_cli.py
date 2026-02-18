@@ -7,7 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from edesto_dev.cli import main
-from edesto_dev.toolchain import Board, DetectedBoard
+from edesto_dev.toolchain import Board, DetectedBoard, JtagConfig
 from edesto_dev.toolchains import get_toolchain
 
 
@@ -191,9 +191,10 @@ class TestDoctor:
 
 
 class TestInitCustomFallback:
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=[])
     @patch("edesto_dev.cli.detect_all_boards", return_value=[])
     @patch("edesto_dev.cli.detect_toolchain", return_value=None)
-    def test_custom_fallback_prompts_user(self, mock_detect_tc, mock_detect_boards, runner):
+    def test_custom_fallback_prompts_user(self, mock_detect_tc, mock_detect_boards, mock_debug, runner):
         with runner.isolated_filesystem():
             # Simulate user input: compile, upload, baud, port, board name
             user_input = "make build\nmake flash\n115200\n/dev/ttyUSB0\nMy Board\n"
@@ -213,9 +214,10 @@ class TestInitCustomFallback:
             assert "make build" in toml_content
             assert "make flash" in toml_content
 
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=[])
     @patch("edesto_dev.cli.detect_all_boards", return_value=[])
     @patch("edesto_dev.cli.detect_toolchain", return_value=None)
-    def test_custom_fallback_saves_edesto_toml(self, mock_detect_tc, mock_detect_boards, runner):
+    def test_custom_fallback_saves_edesto_toml(self, mock_detect_tc, mock_detect_boards, mock_debug, runner):
         with runner.isolated_filesystem():
             user_input = "gcc -o firmware main.c\nopenocd -f upload.cfg\n9600\n/dev/ttyACM0\nSTM32\n"
             result = runner.invoke(main, ["init"], input=user_input)
@@ -329,9 +331,10 @@ class TestIntegrationMultiToolchain:
             # Should NOT contain arduino-cli commands
             assert "arduino-cli" not in content
 
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=[])
     @patch("edesto_dev.cli.detect_all_boards", return_value=[])
     @patch("edesto_dev.cli.detect_toolchain", return_value=None)
-    def test_custom_project_flow(self, mock_detect_tc, mock_detect_boards, runner):
+    def test_custom_project_flow(self, mock_detect_tc, mock_detect_boards, mock_debug, runner):
         """Custom project: manual fallback -> CLAUDE.md with user-specified commands."""
         with runner.isolated_filesystem():
             user_input = "make build\nmake flash PORT={port}\n9600\n/dev/ttyACM0\nMy Custom Board\n"
@@ -453,3 +456,96 @@ class TestInitDebugTools:
             assert "### Logic Analyzer" not in content
             assert "### JTAG/SWD" not in content
             assert "### Oscilloscope" not in content
+
+
+class TestInitJtag:
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_upload_jtag_flag_prompts_for_setup(self, mock_debug, runner):
+        """--upload jtag triggers JTAG setup flow."""
+        with runner.isolated_filesystem():
+            # Input: probe choice (1=ST-Link), target (accept default stm32f4x), serial? (n)
+            user_input = "1\n\nn\n"
+            result = runner.invoke(main, ["init", "--board", "stm32-nucleo", "--upload", "jtag"], input=user_input)
+            assert result.exit_code == 0
+            assert Path("SKILLS.md").exists()
+            content = Path("SKILLS.md").read_text()
+            assert "JTAG" in content or "openocd" in content.lower()
+            assert "stlink" in content.lower() or "stm32f4x" in content
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_upload_jtag_with_serial_port(self, mock_debug, runner):
+        """JTAG setup with serial port includes serial section."""
+        with runner.isolated_filesystem():
+            # Input: probe (1=ST-Link), target (accept default), serial? (y), port, baud
+            user_input = "1\n\ny\n/dev/cu.usbmodem1103\n115200\n"
+            result = runner.invoke(main, ["init", "--board", "stm32-nucleo", "--upload", "jtag"], input=user_input)
+            assert result.exit_code == 0
+            content = Path("SKILLS.md").read_text()
+            assert "### Serial Output" in content
+            assert "/dev/cu.usbmodem1103" in content
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_upload_jtag_without_serial_port(self, mock_debug, runner):
+        """JTAG setup without serial port omits serial section."""
+        with runner.isolated_filesystem():
+            # Input: probe (1=ST-Link), target (accept default), serial? (n)
+            user_input = "1\n\nn\n"
+            result = runner.invoke(main, ["init", "--board", "stm32-nucleo", "--upload", "jtag"], input=user_input)
+            assert result.exit_code == 0
+            content = Path("SKILLS.md").read_text()
+            assert "### Serial Output" not in content
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=[])
+    def test_upload_jtag_without_openocd_fails(self, mock_debug, runner):
+        """--upload jtag fails if OpenOCD is not installed."""
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--board", "stm32-nucleo", "--upload", "jtag"])
+            assert result.exit_code != 0
+            assert "openocd" in result.output.lower()
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_upload_jtag_saves_edesto_toml(self, mock_debug, runner):
+        """JTAG config is saved to edesto.toml."""
+        with runner.isolated_filesystem():
+            user_input = "1\n\nn\n"
+            result = runner.invoke(main, ["init", "--board", "stm32-nucleo", "--upload", "jtag"], input=user_input)
+            assert result.exit_code == 0
+            assert Path("edesto.toml").exists()
+            toml_content = Path("edesto.toml").read_text()
+            assert "[jtag]" in toml_content
+            assert "stlink" in toml_content
+
+    @patch("edesto_dev.cli.detect_all_boards", return_value=[])
+    @patch("edesto_dev.cli.detect_toolchain", return_value=None)
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_auto_fallback_offers_jtag(self, mock_debug, mock_detect_tc, mock_detect_boards, runner):
+        """When no USB boards found and OpenOCD installed, offer JTAG setup."""
+        with runner.isolated_filesystem():
+            # Input: yes to JTAG, board slug, probe (1=ST-Link), target (accept default), serial? (n)
+            user_input = "y\nstm32-nucleo\n1\n\nn\n"
+            result = runner.invoke(main, ["init"], input=user_input)
+            assert result.exit_code == 0
+            assert Path("SKILLS.md").exists()
+            content = Path("SKILLS.md").read_text()
+            assert "JTAG" in content or "openocd" in content.lower()
+
+    @patch("edesto_dev.cli.detect_all_boards", return_value=[])
+    @patch("edesto_dev.cli.detect_toolchain", return_value=None)
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_auto_fallback_jtag_declined_goes_to_custom(self, mock_debug, mock_detect_tc, mock_detect_boards, runner):
+        """Declining JTAG falls through to custom manual setup."""
+        with runner.isolated_filesystem():
+            # Input: no to JTAG, then custom setup: compile, upload, baud, port, name
+            user_input = "n\nmake build\nmake flash\n115200\n/dev/ttyUSB0\nMy Board\n"
+            result = runner.invoke(main, ["init"], input=user_input)
+            assert result.exit_code == 0
+            content = Path("SKILLS.md").read_text()
+            assert "make build" in content
+
+    def test_upload_serial_is_default(self, runner):
+        """--upload serial (or no --upload) uses the normal USB path."""
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            assert result.exit_code == 0
+            content = Path("SKILLS.md").read_text()
+            assert "connected via USB" in content
