@@ -1,65 +1,130 @@
 """CLAUDE.md template rendering for edesto-dev."""
 
+from __future__ import annotations
+
 from edesto_dev.boards import Board
 
 
-def render_template(board: Board, port: str) -> str:
-    """Render a complete CLAUDE.md for the given board and port."""
+def render_generic_template(
+    board_name: str,
+    toolchain_name: str,
+    port: str,
+    baud_rate: int,
+    compile_command: str,
+    upload_command: str,
+    monitor_command: str | None,
+    boot_delay: int,
+    board_info: dict,
+) -> str:
+    """Render a complete CLAUDE.md from generic (non-Arduino-specific) parameters."""
     sections = [
-        _header(board, port),
-        _commands(board, port),
-        _dev_loop(board, port),
-        _validation(board, port),
+        _generic_header(board_name, toolchain_name, port, baud_rate),
+        _generic_commands(compile_command, upload_command, monitor_command),
+        _generic_dev_loop(compile_command, upload_command, boot_delay),
+        _generic_validation(port, baud_rate, boot_delay),
         _datasheets(),
-        _board_info(board),
+        _generic_board_info(board_name, board_info),
     ]
     return "\n".join(sections)
 
 
-def _header(board: Board, port: str) -> str:
-    return f"""# Embedded Development: {board.name}
+def render_template(board: Board, port: str) -> str:
+    """Legacy: render CLAUDE.md for an Arduino board."""
+    return render_generic_template(
+        board_name=board.name,
+        toolchain_name="Arduino",
+        port=port,
+        baud_rate=board.baud_rate,
+        compile_command=f"arduino-cli compile --fqbn {board.fqbn} .",
+        upload_command=f"arduino-cli upload --fqbn {board.fqbn} --port {port} .",
+        monitor_command=f"arduino-cli monitor --port {port} --config baudrate={board.baud_rate}",
+        boot_delay=3,
+        board_info={
+            "capabilities": board.includes if board.includes else None,
+            "pin_notes": board.pin_notes if board.pin_notes else None,
+            "pitfalls": board.pitfalls if board.pitfalls else None,
+        },
+    )
 
-You are developing firmware for a {board.name} connected via USB.
+
+def render_from_toolchain(toolchain, board, port: str) -> str:
+    """Render CLAUDE.md using a Toolchain and Board."""
+    config = toolchain.serial_config(board)
+    info = toolchain.board_info(board)
+    return render_generic_template(
+        board_name=board.name,
+        toolchain_name=toolchain.name,
+        port=port,
+        baud_rate=config["baud_rate"],
+        compile_command=toolchain.compile_command(board),
+        upload_command=toolchain.upload_command(board, port),
+        monitor_command=toolchain.monitor_command(board, port),
+        boot_delay=config.get("boot_delay", 3),
+        board_info=info,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Generic helper functions
+# ---------------------------------------------------------------------------
+
+
+def _generic_header(board_name: str, toolchain_name: str, port: str, baud_rate: int) -> str:
+    return f"""# Embedded Development: {board_name}
+
+You are developing firmware for a {board_name} connected via USB.
 
 ## Hardware
-- Board: {board.name}
-- FQBN: {board.fqbn}
+- Board: {board_name}
 - Port: {port}
-- Framework: Arduino
-- Baud rate: {board.baud_rate}"""
+- Framework: {toolchain_name}
+- Baud rate: {baud_rate}"""
 
 
-def _commands(board: Board, port: str) -> str:
-    return f"""
+def _generic_commands(
+    compile_command: str,
+    upload_command: str,
+    monitor_command: str | None,
+) -> str:
+    parts = [f"""
 ## Commands
 
 Compile:
 ```
-arduino-cli compile --fqbn {board.fqbn} .
+{compile_command}
 ```
 
 Flash:
 ```
-arduino-cli upload --fqbn {board.fqbn} --port {port} .
-```"""
+{upload_command}
+```"""]
+
+    if monitor_command is not None:
+        parts.append(f"""
+Monitor:
+```
+{monitor_command}
+```""")
+
+    return "".join(parts)
 
 
-def _dev_loop(board: Board, port: str) -> str:
+def _generic_dev_loop(compile_command: str, upload_command: str, boot_delay: int) -> str:
     return f"""
 ## Development Loop
 
 Every time you change code, follow this exact sequence:
 
 1. Edit the .ino file (or .cpp/.h files)
-2. Compile: `arduino-cli compile --fqbn {board.fqbn} .`
+2. Compile: `{compile_command}`
 3. If compile fails, read the errors, fix them, and recompile. Do NOT flash broken code.
-4. Flash: `arduino-cli upload --fqbn {board.fqbn} --port {port} .`
-5. Wait 3 seconds for the board to reboot.
+4. Flash: `{upload_command}`
+5. Wait {boot_delay} seconds for the board to reboot.
 6. **Validate your changes** using the method below.
 7. If validation fails, go back to step 1 and iterate."""
 
 
-def _validation(board: Board, port: str) -> str:
+def _generic_validation(port: str, baud_rate: int, boot_delay: int) -> str:
     return f"""
 ## Validation
 
@@ -71,8 +136,8 @@ Use this Python snippet to capture serial output from the board:
 
 ```python
 import serial, time
-ser = serial.Serial('{port}', {board.baud_rate}, timeout=1)
-time.sleep(3)  # Wait for boot
+ser = serial.Serial('{port}', {baud_rate}, timeout=1)
+time.sleep({boot_delay})  # Wait for boot
 lines = []
 start = time.time()
 while time.time() - start < 10:  # Read for 10 seconds
@@ -86,11 +151,57 @@ ser.close()
 Save this as `read_serial.py` and run with `python read_serial.py`. Parse the output to check if your firmware is behaving correctly.
 
 **Important serial conventions for your firmware:**
-- Always use `Serial.begin({board.baud_rate})` in setup()
+- Always use `Serial.begin({baud_rate})` in setup()
 - Use `Serial.println()` (not `Serial.print()`) so each message is a complete line
 - Print `[READY]` when initialization is complete
 - Print `[ERROR] <description>` for any error conditions
 - Use tags for structured output: `[SENSOR] temp=23.4`, `[STATUS] running`"""
+
+
+def _generic_board_info(board_name: str, board_info: dict) -> str:
+    parts = [f"\n## {board_name}-Specific Information"]
+
+    # Capabilities with includes
+    capabilities = board_info.get("capabilities")
+    if capabilities:
+        if isinstance(capabilities, dict):
+            # Dict of capability -> include directive (legacy Arduino style)
+            parts.append("\n### Capabilities")
+            for cap, include in capabilities.items():
+                parts.append(f"- {cap.replace('_', ' ').title()}: `{include}`")
+        elif isinstance(capabilities, list):
+            # List of capability strings
+            parts.append("\n### Capabilities")
+            for cap in capabilities:
+                parts.append(f"- {cap.replace('_', ' ').title()}")
+
+    # Includes (separate from capabilities, used by render_from_toolchain)
+    includes = board_info.get("includes")
+    if includes and isinstance(includes, dict) and not isinstance(capabilities, dict):
+        parts.append("\n### Includes")
+        for cap, include in includes.items():
+            parts.append(f"- {cap.replace('_', ' ').title()}: `{include}`")
+
+    # Pin reference
+    pin_notes = board_info.get("pin_notes")
+    if pin_notes:
+        parts.append("\n### Pin Reference")
+        for note in pin_notes:
+            parts.append(f"- {note}")
+
+    # Pitfalls
+    pitfalls = board_info.get("pitfalls")
+    if pitfalls:
+        parts.append("\n### Common Pitfalls")
+        for pitfall in pitfalls:
+            parts.append(f"- {pitfall}")
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
 
 def _datasheets() -> str:
@@ -107,27 +218,3 @@ When you find a datasheet:
 - Use the correct register addresses, pin assignments, and protocol settings from the datasheet — not from memory or guesswork.
 - Pay attention to voltage levels, max current ratings, and timing requirements.
 - If a datasheet contradicts the pin reference below, the datasheet is correct."""
-
-
-def _board_info(board: Board) -> str:
-    parts = [f"\n## {board.name}-Specific Information"]
-
-    # Capabilities with includes
-    if board.includes:
-        parts.append("\n### Capabilities")
-        for cap, include in board.includes.items():
-            parts.append(f"- {cap.replace('_', ' ').title()}: `{include}`")
-
-    # Pin reference
-    if board.pin_notes:
-        parts.append("\n### Pin Reference")
-        for note in board.pin_notes:
-            parts.append(f"- {note}")
-
-    # Pitfalls
-    if board.pitfalls:
-        parts.append("\n### Common Pitfalls")
-        for pitfall in board.pitfalls:
-            parts.append(f"- {pitfall}")
-
-    return "\n".join(parts)
