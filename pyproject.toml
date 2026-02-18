@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "edesto-dev"
-version = "0.3.0"
+version = "0.4.0"
 description = "Use Claude Code for embedded development. One command to set up the bridge between your AI agent and your hardware."
 readme = "README.md"
 license = "MIT"
@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 authors = [
     {name = "Edesto", email = "greg@edesto.com"},
 ]
-keywords = ["embedded", "esp32", "arduino", "firmware", "ai", "claude", "development"]
+keywords = ["embedded", "esp32", "arduino", "firmware", "ai", "claude", "development", "platformio", "esp-idf", "micropython", "microcontroller"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
