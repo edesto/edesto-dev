@@ -67,6 +67,7 @@ class TestRenderTemplate:
     def test_has_serial_validation(self):
         board = get_board("esp32")
         result = render_template(board, port="/dev/ttyUSB0")
+        assert "### Serial Output" in result
         assert "serial.Serial" in result
         assert "[READY]" in result
         assert "115200" in result
@@ -113,6 +114,12 @@ class TestRenderTemplate:
         assert "datasheets/" in result
         assert ".pdf" in result.lower()
 
+    def test_has_debugging_section(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "## Debugging" in result
+        assert "### Serial Output" in result
+
 
 class TestAllBoardsRender:
     @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])
@@ -128,10 +135,10 @@ class TestAllBoardsRender:
         assert board.fqbn in result
 
     @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])
-    def test_has_validation_section(self, slug):
+    def test_has_debugging_section(self, slug):
         board = get_board(slug)
         result = render_template(board, port="/dev/ttyUSB0")
-        assert "Validation" in result
+        assert "## Debugging" in result
         assert "serial.Serial" in result
 
     @pytest.mark.parametrize("slug", [b.slug for b in list_boards()])

@@ -16,6 +16,7 @@ def render_generic_template(
     boot_delay: int,
     board_info: dict,
     setup_info: str | None = None,
+    debug_tools: list[str] | None = None,
 ) -> str:
     """Render a complete SKILLS.md from generic parameters."""
     sections = [
@@ -23,7 +24,7 @@ def render_generic_template(
         _setup(setup_info),
         _generic_commands(compile_command, upload_command, monitor_command),
         _generic_dev_loop(compile_command, upload_command, boot_delay),
-        _generic_validation(port, baud_rate, boot_delay),
+        _debugging(port, baud_rate, boot_delay, debug_tools or []),
         _troubleshooting(port, baud_rate, boot_delay),
         _datasheets(),
         _generic_board_info(board_name, board_info),
@@ -53,6 +54,7 @@ def render_template(board: Board, port: str) -> str:
             "pitfalls": board.pitfalls if board.pitfalls else None,
         },
         setup_info=setup,
+        debug_tools=None,
     )
 
 
@@ -143,17 +145,56 @@ Every time you change code, follow this exact sequence:
 3. If compile fails, read the errors, fix them, and recompile. Do NOT flash broken code.
 4. Flash: `{upload_command}`
 5. Wait {boot_delay} seconds for the board to reboot.
-6. **Validate your changes** using the method below.
+6. **Validate your changes** using the debugging methods below. Pick the right tool for what you're checking.
 7. If validation fails, go back to step 1 and iterate."""
 
 
-def _generic_validation(port: str, baud_rate: int, boot_delay: int) -> str:
+def _debugging(port: str, baud_rate: int, boot_delay: int, debug_tools: list[str]) -> str:
+    parts = []
+
+    # Header with tool guide
+    tool_guide = [
+        "- **Serial output** — application-level behavior (sensor readings, state machines, error messages)"
+    ]
+    if "saleae" in debug_tools:
+        tool_guide.append(
+            "- **Logic analyzer** — protocol-level issues (SPI/I2C timing, signal integrity, bus decoding)"
+        )
+    if "openocd" in debug_tools:
+        tool_guide.append(
+            "- **JTAG/SWD** — CPU-level issues (crashes, HardFaults, register/memory state, breakpoints)"
+        )
+    if "scope" in debug_tools:
+        tool_guide.append(
+            "- **Oscilloscope** — electrical issues (voltage levels, PWM frequency/duty, rise times, noise)"
+        )
+
+    guide_text = "\n".join(tool_guide)
+    parts.append(f"""
+## Debugging
+
+Use the right tool for the problem:
+{guide_text}""")
+
+    # Serial subsection (always present)
+    parts.append(_serial_section(port, baud_rate, boot_delay))
+
+    # Tool subsections (conditional) — stubs for now
+    if "saleae" in debug_tools:
+        parts.append(_saleae_section())
+    if "openocd" in debug_tools:
+        parts.append(_openocd_section())
+    if "scope" in debug_tools:
+        parts.append(_scope_section())
+
+    return "\n".join(s for s in parts if s)
+
+
+def _serial_section(port: str, baud_rate: int, boot_delay: int) -> str:
     return f"""
-## Validation
+### Serial Output
 
 This is how you verify your code is actually working on the device. Always validate after flashing.
-
-### Read Serial Output
 
 Use this Python snippet to capture serial output from the board:
 
@@ -189,6 +230,18 @@ Save this as `read_serial.py` and run with `python read_serial.py`. Parse the ou
 - Print `[ERROR] <description>` for any error conditions
 - Use tags for structured output: `[SENSOR] temp=23.4`, `[STATUS] running`
 - Print `[DONE]` when a test sequence finishes (allows the reader to exit early)"""
+
+
+def _saleae_section() -> str:
+    return ""
+
+
+def _openocd_section() -> str:
+    return ""
+
+
+def _scope_section() -> str:
+    return ""
 
 
 def _troubleshooting(port: str, baud_rate: int, boot_delay: int) -> str:
