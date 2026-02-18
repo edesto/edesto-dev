@@ -87,14 +87,14 @@ def _save_jtag_toml(jtag_config, port=None, baud_rate=None):
 
 
 def _write_skills_files(content, board_def, port):
-    """Write SKILLS.md and copies, handling overwrite confirmation."""
+    """Write SKILLS.md and copies, handling overwrite confirmation. Returns True if written."""
     skills_path = Path("SKILLS.md")
     copies = [Path("CLAUDE.md"), Path(".cursorrules"), Path("AGENTS.md")]
 
     if skills_path.exists():
         if not click.confirm("SKILLS.md already exists. Overwrite?"):
             click.echo("Aborted.")
-            return
+            return False
 
     skills_path.write_text(content)
     for copy_path in copies:
@@ -104,6 +104,7 @@ def _write_skills_files(content, board_def, port):
         click.echo(f"Generated SKILLS.md for {board_def.name} on {port}. Also created: CLAUDE.md, .cursorrules, AGENTS.md")
     else:
         click.echo(f"Generated SKILLS.md for {board_def.name} (JTAG/SWD). Also created: CLAUDE.md, .cursorrules, AGENTS.md")
+    return True
 
 
 @main.command()
@@ -151,8 +152,8 @@ def init(board, port, toolchain_name, upload_method):
 
         jtag_config, port, baud_rate = _jtag_setup(board_def)
         content = _render_jtag_content(board_def, toolchain, jtag_config, port, baud_rate)
-        _save_jtag_toml(jtag_config, port, baud_rate)
-        _write_skills_files(content, board_def, port)
+        if _write_skills_files(content, board_def, port):
+            _save_jtag_toml(jtag_config, port, baud_rate)
         return
 
     # ---- Existing USB serial path ----
@@ -221,8 +222,8 @@ def init(board, port, toolchain_name, upload_method):
 
                         jtag_config, port, baud_rate = _jtag_setup(board_def)
                         content = _render_jtag_content(board_def, toolchain, jtag_config, port, baud_rate)
-                        _save_jtag_toml(jtag_config, port, baud_rate)
-                        _write_skills_files(content, board_def, port)
+                        if _write_skills_files(content, board_def, port):
+                            _save_jtag_toml(jtag_config, port, baud_rate)
                         return
                     # else: fall through to custom manual setup
 
