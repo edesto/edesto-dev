@@ -411,3 +411,131 @@ class TestDebugToolSections:
             debug_tools=[],
         )
         assert "### Oscilloscope" not in result
+
+
+class TestJtagTemplateRendering:
+    def test_jtag_header_says_connected_via_jtag(self):
+        from edesto_dev.templates import render_generic_template
+        from edesto_dev.toolchain import JtagConfig
+        result = render_generic_template(
+            board_name="STM32 Nucleo-64",
+            toolchain_name="Arduino",
+            port=None,
+            baud_rate=115200,
+            compile_command="arduino-cli compile --fqbn STMicroelectronics:stm32:Nucleo_64 .",
+            upload_command='openocd -f interface/stlink.cfg -f target/stm32f4x.cfg -c "program build/firmware.elf verify reset exit"',
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["openocd"],
+            jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
+        )
+        assert "JTAG" in result or "jtag" in result.lower()
+        assert "connected via USB" not in result
+
+    def test_jtag_header_shows_probe_name(self):
+        from edesto_dev.templates import render_generic_template
+        from edesto_dev.toolchain import JtagConfig
+        result = render_generic_template(
+            board_name="STM32 Nucleo-64",
+            toolchain_name="Arduino",
+            port=None,
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["openocd"],
+            jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
+        )
+        assert "stlink" in result.lower() or "ST-Link" in result
+
+    def test_jtag_no_serial_section_when_no_port(self):
+        from edesto_dev.templates import render_generic_template
+        from edesto_dev.toolchain import JtagConfig
+        result = render_generic_template(
+            board_name="STM32 Nucleo-64",
+            toolchain_name="Arduino",
+            port=None,
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["openocd"],
+            jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
+        )
+        assert "### Serial Output" not in result
+
+    def test_jtag_with_serial_port_has_serial_section(self):
+        from edesto_dev.templates import render_generic_template
+        from edesto_dev.toolchain import JtagConfig
+        result = render_generic_template(
+            board_name="STM32 Nucleo-64",
+            toolchain_name="Arduino",
+            port="/dev/cu.usbmodem1103",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["openocd"],
+            jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
+        )
+        assert "### Serial Output" in result
+
+    def test_jtag_always_has_openocd_in_debug_tools(self):
+        from edesto_dev.templates import render_generic_template
+        from edesto_dev.toolchain import JtagConfig
+        result = render_generic_template(
+            board_name="STM32 Nucleo-64",
+            toolchain_name="Arduino",
+            port=None,
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=[],
+            jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
+        )
+        assert "### JTAG/SWD" in result
+
+    def test_jtag_no_serial_troubleshooting_when_no_port(self):
+        from edesto_dev.templates import render_generic_template
+        from edesto_dev.toolchain import JtagConfig
+        result = render_generic_template(
+            board_name="STM32 Nucleo-64",
+            toolchain_name="Arduino",
+            port=None,
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["openocd"],
+            jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
+        )
+        assert "Permission denied" not in result
+
+    def test_usb_path_unchanged_without_jtag_config(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="Arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=[],
+        )
+        assert "connected via USB" in result
+        assert "### Serial Output" in result

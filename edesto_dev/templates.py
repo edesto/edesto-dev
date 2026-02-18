@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from edesto_dev.toolchain import Board
+from edesto_dev.toolchain import Board, JtagConfig
 
 
 def render_generic_template(
     board_name: str,
     toolchain_name: str,
-    port: str,
+    port: str | None,
     baud_rate: int,
     compile_command: str,
     upload_command: str,
@@ -17,14 +17,18 @@ def render_generic_template(
     board_info: dict,
     setup_info: str | None = None,
     debug_tools: list[str] | None = None,
+    jtag_config: JtagConfig | None = None,
 ) -> str:
     """Render a complete SKILLS.md from generic parameters."""
+    tools = list(debug_tools or [])
+    if jtag_config and "openocd" not in tools:
+        tools.append("openocd")
     sections = [
-        _generic_header(board_name, toolchain_name, port, baud_rate),
+        _generic_header(board_name, toolchain_name, port, baud_rate, jtag_config=jtag_config),
         _setup(setup_info),
         _generic_commands(compile_command, upload_command, monitor_command),
         _generic_dev_loop(compile_command, upload_command, boot_delay),
-        _debugging(port, baud_rate, boot_delay, debug_tools or []),
+        _debugging(port, baud_rate, boot_delay, tools),
         _troubleshooting(port, baud_rate, boot_delay),
         _datasheets(),
         _generic_board_info(board_name, board_info),
@@ -58,7 +62,7 @@ def render_template(board: Board, port: str) -> str:
     )
 
 
-def render_from_toolchain(toolchain, board, port: str, debug_tools: list[str] | None = None) -> str:
+def render_from_toolchain(toolchain, board, port: str | None, debug_tools: list[str] | None = None, jtag_config: JtagConfig | None = None) -> str:
     """Render SKILLS.md using a Toolchain and Board."""
     config = toolchain.serial_config(board)
     info = toolchain.board_info(board)
@@ -74,6 +78,7 @@ def render_from_toolchain(toolchain, board, port: str, debug_tools: list[str] | 
         board_info=info,
         setup_info=toolchain.setup_info(board),
         debug_tools=debug_tools,
+        jtag_config=jtag_config,
     )
 
 
@@ -82,7 +87,21 @@ def render_from_toolchain(toolchain, board, port: str, debug_tools: list[str] | 
 # ---------------------------------------------------------------------------
 
 
-def _generic_header(board_name: str, toolchain_name: str, port: str, baud_rate: int) -> str:
+def _generic_header(board_name: str, toolchain_name: str, port: str | None, baud_rate: int, jtag_config: JtagConfig | None = None) -> str:
+    if jtag_config:
+        lines = [f"# Embedded Development: {board_name}",
+                 "",
+                 f"You are developing firmware for a {board_name} connected via JTAG/SWD.",
+                 "",
+                 "## Hardware",
+                 f"- Board: {board_name}",
+                 f"- Debug probe: {jtag_config.interface}",
+                 f"- Framework: {toolchain_name}",
+                 f"- Upload: openocd (JTAG/SWD)"]
+        if port:
+            lines.append(f"- Serial port: {port}")
+            lines.append(f"- Baud rate: {baud_rate}")
+        return "\n".join(lines)
     return f"""# Embedded Development: {board_name}
 
 You are developing firmware for a {board_name} connected via USB.
@@ -150,13 +169,15 @@ Every time you change code, follow this exact sequence:
 7. If validation fails, go back to step 1 and iterate."""
 
 
-def _debugging(port: str, baud_rate: int, boot_delay: int, debug_tools: list[str]) -> str:
+def _debugging(port: str | None, baud_rate: int, boot_delay: int, debug_tools: list[str]) -> str:
     parts = []
 
     # Header with tool guide
-    tool_guide = [
-        "- **Serial output** — application-level behavior (sensor readings, state machines, error messages)"
-    ]
+    tool_guide = []
+    if port:
+        tool_guide.append(
+            "- **Serial output** — application-level behavior (sensor readings, state machines, error messages)"
+        )
     if "saleae" in debug_tools:
         tool_guide.append(
             "- **Logic analyzer** — protocol-level issues (SPI/I2C timing, signal integrity, bus decoding)"
@@ -177,8 +198,9 @@ def _debugging(port: str, baud_rate: int, boot_delay: int, debug_tools: list[str
 Use the right tool for the problem:
 {guide_text}""")
 
-    # Serial subsection (always present)
-    parts.append(_serial_section(port, baud_rate, boot_delay))
+    # Serial subsection (only when port is available)
+    if port:
+        parts.append(_serial_section(port, baud_rate, boot_delay))
 
     # Tool subsections (conditional) — stubs for now
     if "saleae" in debug_tools:
@@ -482,7 +504,9 @@ Adapt the channel, voltage scale, timebase, and trigger level to match your sign
 If the scope shows no signal or unexpected readings, ask the user to verify that the oscilloscope probe is connected to the correct pin and that the ground clip is attached."""
 
 
-def _troubleshooting(port: str, baud_rate: int, boot_delay: int) -> str:
+def _troubleshooting(port: str | None, baud_rate: int, boot_delay: int) -> str:
+    if not port:
+        return ""
     return f"""
 ## Troubleshooting
 
