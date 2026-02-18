@@ -40,6 +40,7 @@ def _build_boards() -> dict[str, Board]:
         core="esp32:esp32",
         core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
         baud_rate=115200,
+        openocd_target="esp32",
         capabilities=["wifi", "bluetooth", "ble", "http_server", "ota", "spiffs", "preferences"],
         pins={
             "onboard_led": 2,
@@ -91,6 +92,7 @@ def _build_boards() -> dict[str, Board]:
         core="esp32:esp32",
         core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
         baud_rate=115200,
+        openocd_target="esp32s3",
         capabilities=["wifi", "ble", "http_server", "ota", "spiffs", "preferences", "usb_native"],
         pins={
             "onboard_led": 48,
@@ -135,6 +137,7 @@ def _build_boards() -> dict[str, Board]:
         core="esp32:esp32",
         core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
         baud_rate=115200,
+        openocd_target="esp32c3",
         capabilities=["wifi", "ble", "http_server", "ota", "spiffs", "preferences"],
         pins={
             "onboard_led": 8,
@@ -177,6 +180,7 @@ def _build_boards() -> dict[str, Board]:
         core="esp32:esp32",
         core_url="https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json",
         baud_rate=115200,
+        openocd_target="esp32c6",
         capabilities=["wifi", "wifi6", "ble", "zigbee", "thread", "http_server", "ota", "spiffs", "preferences"],
         pins={
             "onboard_led": 8,
@@ -380,6 +384,7 @@ def _build_boards() -> dict[str, Board]:
         core="rp2040:rp2040",
         core_url="https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json",
         baud_rate=115200,
+        openocd_target="rp2040",
         capabilities=["digital_io", "analog_input", "pwm", "i2c", "spi", "uart", "pio", "dual_core", "usb_native"],
         pins={
             "onboard_led": 25,
@@ -504,6 +509,7 @@ def _build_boards() -> dict[str, Board]:
         core="STMicroelectronics:stm32",
         core_url="https://github.com/stm32duino/BoardManagerFiles/raw/main/package_stmicroelectronics_index.json",
         baud_rate=115200,
+        openocd_target="stm32f4x",
         capabilities=["digital_io", "analog_input", "pwm", "i2c", "spi", "uart", "dac", "can_bus"],
         pins={
             "onboard_led": 13,

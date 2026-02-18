@@ -145,3 +145,21 @@ class TestArduinoSerialConfig:
         board = arduino.get_board("arduino-uno")
         config = arduino.serial_config(board)
         assert config["baud_rate"] == 9600
+
+
+class TestBoardOpenocdTargets:
+    def test_stm32_nucleo_has_openocd_target(self, arduino):
+        board = arduino.get_board("stm32-nucleo")
+        assert board.openocd_target == "stm32f4x"
+
+    def test_esp32_has_openocd_target(self, arduino):
+        board = arduino.get_board("esp32")
+        assert board.openocd_target == "esp32"
+
+    def test_rp2040_has_openocd_target(self, arduino):
+        board = arduino.get_board("rp2040")
+        assert board.openocd_target == "rp2040"
+
+    def test_arduino_uno_has_no_openocd_target(self, arduino):
+        board = arduino.get_board("arduino-uno")
+        assert board.openocd_target == ""
