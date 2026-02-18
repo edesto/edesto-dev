@@ -203,6 +203,16 @@ def doctor():
         click.echo("[!!] pyserial not installed. Run: pip install pyserial")
         ok = False
 
+    # Check debug tools (optional)
+    debug_tools = detect_debug_tools()
+    click.echo("\nDebug tools (optional):")
+    _TOOL_NAMES = {"saleae": "Saleae Logic 2 (logic2-automation)", "openocd": "OpenOCD (JTAG/SWD)", "scope": "Oscilloscope (pyvisa)"}
+    for tool_id, tool_name in _TOOL_NAMES.items():
+        if tool_id in debug_tools:
+            click.echo(f"  [OK] {tool_name}")
+        else:
+            click.echo(f"  [--] {tool_name} — not installed")
+
     if ok:
         click.echo("\nAll checks passed. Ready for embedded development.")
     else:

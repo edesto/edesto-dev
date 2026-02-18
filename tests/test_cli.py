@@ -418,6 +418,20 @@ class TestIntegrationMultiToolchain:
         assert "micropython" in result.output
 
 
+class TestDoctorDebugTools:
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["saleae", "openocd", "scope"])
+    def test_doctor_shows_debug_tools(self, mock_debug, runner):
+        result = runner.invoke(main, ["doctor"])
+        assert "saleae" in result.output.lower()
+        assert "openocd" in result.output.lower()
+        assert "scope" in result.output.lower() or "oscilloscope" in result.output.lower()
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=[])
+    def test_doctor_shows_no_debug_tools(self, mock_debug, runner):
+        result = runner.invoke(main, ["doctor"])
+        assert result.exit_code == 0
+
+
 class TestInitDebugTools:
     @patch("edesto_dev.cli.detect_debug_tools", return_value=["saleae", "openocd"])
     def test_init_includes_detected_debug_tools(self, mock_debug, runner):
