@@ -1,14 +1,13 @@
 """CLI entry point for edesto-dev."""
 
 import glob as globmod
-import shutil
-import subprocess
 from pathlib import Path
 
 import click
 
-from edesto_dev.boards import get_board, list_boards, detect_boards, BoardNotFoundError
-from edesto_dev.templates import render_template
+from edesto_dev.detect import detect_toolchain, detect_all_boards
+from edesto_dev.toolchains import get_toolchain, list_toolchains
+from edesto_dev.templates import render_from_toolchain
 
 
 @click.group()
@@ -20,61 +19,92 @@ def main():
 @main.command()
 @click.option("--board", type=str, help="Board slug (e.g. esp32, arduino-uno). Use 'edesto boards' to list.")
 @click.option("--port", type=str, help="Serial port (e.g. /dev/ttyUSB0, /dev/cu.usbserial-0001).")
-def init(board, port):
+@click.option("--toolchain", "toolchain_name", type=str, help="Toolchain (e.g. arduino, platformio).")
+def init(board, port, toolchain_name):
     """Generate a CLAUDE.md for your board."""
-    if board and port:
-        # Both provided — skip detection
-        try:
-            board_def = get_board(board)
-        except BoardNotFoundError as e:
-            click.echo(f"Error: {e}")
+
+    # Resolve toolchain
+    if toolchain_name:
+        toolchain = get_toolchain(toolchain_name)
+        if not toolchain:
+            click.echo(f"Error: Unknown toolchain: {toolchain_name}. Available: {', '.join(t.name for t in list_toolchains())}")
             raise SystemExit(1)
     else:
-        # Need auto-detection for at least one value
-        detected = detect_boards()
+        toolchain = detect_toolchain(Path.cwd())
 
-        if board and not port:
-            # Board specified, find its port from detected devices
-            try:
-                board_def = get_board(board)
-            except BoardNotFoundError as e:
-                click.echo(f"Error: {e}")
-                raise SystemExit(1)
-            matches = [d for d in detected if d.board.slug == board]
-            if matches:
-                port = matches[0].port
-                click.echo(f"Detected {board_def.name} on {port}")
-            else:
-                click.echo(f"Error: Could not detect port for {board}. Specify with --port.")
-                raise SystemExit(1)
-        elif not board and not port:
-            # Full auto-detection
-            if not detected:
-                click.echo("Error: No boards detected. Is a board connected via USB?")
-                click.echo("Make sure arduino-cli is installed and the board core is set up.")
-                click.echo("You can also specify manually: edesto init --board esp32 --port /dev/ttyUSB0")
-                raise SystemExit(1)
-            elif len(detected) == 1:
-                board_def = detected[0].board
-                port = detected[0].port
-                click.echo(f"Detected {board_def.name} on {port}")
-            else:
-                click.echo("Multiple boards detected:\n")
-                for i, d in enumerate(detected, 1):
-                    click.echo(f"  {i}. {d.board.name} on {d.port}")
-                click.echo()
-                choice = click.prompt("Which board?", type=int)
-                if choice < 1 or choice > len(detected):
-                    click.echo("Invalid choice.")
-                    raise SystemExit(1)
-                board_def = detected[choice - 1].board
-                port = detected[choice - 1].port
+    # Resolve board and port
+    if board and port:
+        # Both provided -- find board in toolchain
+        if toolchain:
+            board_def = toolchain.get_board(board)
         else:
-            # port specified but not board — unusual, just require board
-            click.echo("Error: --board is required when using --port. Use 'edesto boards' to list supported boards.")
+            # No toolchain detected, search all toolchains for this board
+            board_def = None
+            for tc in list_toolchains():
+                board_def = tc.get_board(board)
+                if board_def:
+                    toolchain = tc
+                    break
+        if not board_def:
+            click.echo(f"Error: Unknown board: {board}. Use 'edesto boards' to list supported boards.")
             raise SystemExit(1)
+    elif board and not port:
+        # Board specified, detect port
+        if not toolchain:
+            for tc in list_toolchains():
+                board_def = tc.get_board(board)
+                if board_def:
+                    toolchain = tc
+                    break
+            if not toolchain:
+                click.echo(f"Error: Unknown board: {board}.")
+                raise SystemExit(1)
+        else:
+            board_def = toolchain.get_board(board)
+            if not board_def:
+                click.echo(f"Error: Unknown board: {board}.")
+                raise SystemExit(1)
+        detected = toolchain.detect_boards()
+        matches = [d for d in detected if d.board.slug == board]
+        if matches:
+            port = matches[0].port
+            click.echo(f"Detected {board_def.name} on {port}")
+        else:
+            click.echo(f"Error: Could not detect port for {board}. Specify with --port.")
+            raise SystemExit(1)
+    elif not board and not port:
+        # Full auto-detection
+        detected = detect_all_boards()
+        if not detected:
+            click.echo("Error: No boards detected. Is a board connected via USB?")
+            click.echo("You can specify manually: edesto init --board esp32 --port /dev/ttyUSB0")
+            raise SystemExit(1)
+        elif len(detected) == 1:
+            board_def = detected[0].board
+            port = detected[0].port
+            toolchain_name = detected[0].toolchain_name
+            if not toolchain:
+                toolchain = get_toolchain(toolchain_name)
+            click.echo(f"Detected {board_def.name} on {port}")
+        else:
+            click.echo("Multiple boards detected:\n")
+            for i, d in enumerate(detected, 1):
+                click.echo(f"  {i}. {d.board.name} on {d.port}")
+            click.echo()
+            choice = click.prompt("Which board?", type=int)
+            if choice < 1 or choice > len(detected):
+                click.echo("Invalid choice.")
+                raise SystemExit(1)
+            board_def = detected[choice - 1].board
+            port = detected[choice - 1].port
+            if not toolchain:
+                toolchain = get_toolchain(detected[choice - 1].toolchain_name)
+    else:
+        # port specified but not board
+        click.echo("Error: --board is required when using --port.")
+        raise SystemExit(1)
 
-    content = render_template(board_def, port=port)
+    content = render_from_toolchain(toolchain, board_def, port=port)
 
     claude_path = Path("CLAUDE.md")
     cursor_path = Path(".cursorrules")
@@ -92,14 +122,27 @@ def init(board, port):
 
 
 @main.command()
-def boards():
+@click.option("--toolchain", "toolchain_name", type=str, help="Filter by toolchain.")
+def boards(toolchain_name):
     """List supported boards."""
-    board_list = list_boards()
-    click.echo(f"Supported boards ({len(board_list)}):\n")
-    click.echo(f"  {'Slug':<20} {'Name':<30} {'FQBN'}")
-    click.echo(f"  {'─' * 20} {'─' * 30} {'─' * 40}")
-    for b in board_list:
-        click.echo(f"  {b.slug:<20} {b.name:<30} {b.fqbn}")
+    if toolchain_name:
+        tc = get_toolchain(toolchain_name)
+        if not tc:
+            click.echo(f"Error: Unknown toolchain: {toolchain_name}")
+            raise SystemExit(1)
+        toolchain_list = [tc]
+    else:
+        toolchain_list = list_toolchains()
+
+    total = sum(len(tc.list_boards()) for tc in toolchain_list)
+    click.echo(f"Supported boards ({total}):\n")
+    for tc in toolchain_list:
+        tc_boards = tc.list_boards()
+        if tc_boards:
+            click.echo(f"  {tc.name}:")
+            for b in tc_boards:
+                click.echo(f"    {b.slug:<20} {b.name}")
+            click.echo()
 
 
 @main.command()
@@ -107,21 +150,14 @@ def doctor():
     """Check your environment for embedded development."""
     ok = True
 
-    # Check arduino-cli
-    arduino_cli = shutil.which("arduino-cli")
-    if arduino_cli:
-        click.echo(f"[OK] arduino-cli found: {arduino_cli}")
-        try:
-            version = subprocess.run(
-                ["arduino-cli", "version"],
-                capture_output=True, text=True, timeout=5
-            )
-            click.echo(f"     {version.stdout.strip()}")
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            pass
-    else:
-        click.echo("[!!] arduino-cli not found. Install: https://arduino.github.io/arduino-cli/installation/")
-        ok = False
+    # Check each toolchain
+    for tc in list_toolchains():
+        result = tc.doctor()
+        if result["ok"]:
+            click.echo(f"[OK] {tc.name}: {result['message']}")
+        else:
+            click.echo(f"[!!] {tc.name}: {result['message']}")
+            ok = False
 
     # Check serial ports
     ports = globmod.glob("/dev/ttyUSB*") + globmod.glob("/dev/ttyACM*") + globmod.glob("/dev/cu.usb*")
@@ -144,4 +180,4 @@ def doctor():
     if ok:
         click.echo("\nAll checks passed. Ready for embedded development.")
     else:
-        click.echo("\nSome checks failed. Fix the issues above before running 'edesto init'.")
+        click.echo("\nSome checks failed. Fix the issues above.")
