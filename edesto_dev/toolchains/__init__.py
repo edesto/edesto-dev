@@ -18,3 +18,7 @@ def get_toolchain(name: str) -> Toolchain | None:
 def list_toolchains() -> list[Toolchain]:
     """Return all registered toolchains."""
     return list(_REGISTRY.values())
+
+
+# Auto-import toolchain modules so they self-register.
+from edesto_dev.toolchains import arduino as _arduino  # noqa: F401, E402
