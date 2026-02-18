@@ -41,11 +41,11 @@ edesto init --board esp32 --port /dev/ttyUSB0 --toolchain arduino
 `edesto init` detects your project and generates a `SKILLS.md` (plus copies as `CLAUDE.md`, `.cursorrules`, and `AGENTS.md`) that gives your AI agent:
 
 1. **Compile** and **flash** commands for your specific toolchain
-2. A **serial validation** snippet to read device output and verify changes
+2. A **debugging toolkit** — serial output reading, plus auto-detected support for logic analyzers, JTAG/SWD, and oscilloscopes
 3. **Board-specific** pin references, capabilities, and common pitfalls
 4. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
 
-The validation step is what makes this work. Your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware.
+The debugging step is what makes this work. Your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. When you have additional debug tools installed, the agent can also drive them programmatically.
 
 ## Supported Toolchains
 
@@ -78,6 +78,19 @@ If edesto can't detect your toolchain, it prompts you to enter compile/upload co
 
 Any board works with PlatformIO, ESP-IDF, MicroPython, or a custom toolchain — the table above is for Arduino auto-detection. Run `edesto boards` to see the full list.
 
+## Debug Tools (Optional)
+
+edesto auto-detects debug tools on your machine and includes them in the generated SKILLS.md. The agent picks the right tool for the problem:
+
+| Tool | What it checks | Detection |
+|------|---------------|-----------|
+| **Serial output** | Application behavior (always included) | `pyserial` |
+| **Logic analyzer** | SPI/I2C/UART protocol timing and bus decoding | [Saleae Logic 2](https://www.saleae.com/) + `logic2-automation` Python package |
+| **JTAG/SWD** | CPU state, crashes, HardFaults, registers, memory | `openocd` on PATH |
+| **Oscilloscope** | Voltage levels, PWM frequency/duty, rise times | SCPI scope + `pyvisa` Python package |
+
+If a tool isn't installed, its section is simply omitted — the agent won't try to use it. Run `edesto doctor` to see which tools are detected.
+
 ## Commands
 
 ```bash
@@ -103,6 +116,7 @@ Three example projects in `examples/`, each with an intentional bug for your AI 
 - A supported board connected via USB
 - Python 3.10+
 - Your toolchain's CLI installed (e.g., `arduino-cli`, `pio`, `idf.py`, `mpremote`)
+- Optional: debug tools (`logic2-automation`, `openocd`, `pyvisa`) for advanced debugging
 
 Run `edesto doctor` to check your setup.
 
