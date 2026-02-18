@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/f1d4719d-ed60-406e-a274-0b0f2b06ac21
 ## Install
 
 ```
-pipx install edesto-dev
+pip install edesto-dev
 ```
 
 ## Quick Start
