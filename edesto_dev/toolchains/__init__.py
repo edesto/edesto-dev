@@ -22,3 +22,4 @@ def list_toolchains() -> list[Toolchain]:
 
 # Auto-import toolchain modules so they self-register.
 from edesto_dev.toolchains import arduino as _arduino  # noqa: F401, E402
+from edesto_dev.toolchains import platformio as _platformio  # noqa: F401, E402
