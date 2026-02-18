@@ -46,3 +46,19 @@ class TestDetectAllBoards:
         # Should not raise, just return empty/partial results
         detected = detect_all_boards()
         assert isinstance(detected, list)
+
+
+class TestEdesToml:
+    def test_edesto_toml_loads_custom_toolchain(self, tmp_path):
+        toml_content = '[toolchain]\ncompile = "make build"\nupload = "make flash PORT={port}"\n\n[serial]\nbaud_rate = 9600\n'
+        (tmp_path / "edesto.toml").write_text(toml_content)
+        tc = detect_toolchain(tmp_path)
+        assert tc is not None
+        assert tc.name == "custom"
+
+    def test_edesto_toml_takes_priority_over_ino(self, tmp_path):
+        toml_content = '[toolchain]\ncompile = "make"\nupload = "make flash"\n'
+        (tmp_path / "edesto.toml").write_text(toml_content)
+        (tmp_path / "sketch.ino").write_text("void setup() {}")
+        tc = detect_toolchain(tmp_path)
+        assert tc.name == "custom"

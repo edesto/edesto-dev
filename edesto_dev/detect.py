@@ -51,6 +51,29 @@ def detect_all_boards() -> list[DetectedBoard]:
 
 
 def _load_custom_toolchain(toml_path: Path) -> Toolchain | None:
-    """Load a custom toolchain from edesto.toml. Returns None if not implemented yet."""
-    # Will be implemented in Task 11 (Custom toolchain)
-    return None
+    """Load a custom toolchain from edesto.toml."""
+    try:
+        import tomllib
+    except ImportError:
+        try:
+            import tomli as tomllib
+        except ImportError:
+            return None
+
+    try:
+        with open(toml_path, "rb") as f:
+            data = tomllib.load(f)
+    except Exception:
+        return None
+
+    tc_data = data.get("toolchain", {})
+    if not tc_data.get("compile") or not tc_data.get("upload"):
+        return None
+
+    from edesto_dev.toolchains.custom import CustomToolchain
+    serial_data = data.get("serial", {})
+    return CustomToolchain(
+        compile_cmd=tc_data["compile"],
+        upload_cmd=tc_data["upload"],
+        baud_rate=serial_data.get("baud_rate", 115200),
+    )
