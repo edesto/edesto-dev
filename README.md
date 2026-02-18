@@ -4,6 +4,11 @@
 
 AI coding agents stop at the terminal. `edesto init` gives them the full embedded development loop — compile, flash, read serial output, iterate — so they can autonomously develop and debug firmware on real hardware. Works with Claude Code, Cursor, Codex, and OpenClaw.
 
+
+https://github.com/user-attachments/assets/f1d4719d-ed60-406e-a274-0b0f2b06ac21
+
+
+
 ## Install
 
 ```
