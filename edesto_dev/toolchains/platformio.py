@@ -28,6 +28,9 @@ class PlatformIOToolchain(Toolchain):
     def monitor_command(self, board: Board, port: str) -> str:
         return f"pio device monitor --port {port} --baud {board.baud_rate}"
 
+    def setup_info(self, board: Board) -> str | None:
+        return "PlatformIO automatically downloads required platforms on first compile. No manual setup needed."
+
     def serial_config(self, board: Board) -> dict:
         return {"baud_rate": board.baud_rate, "boot_delay": 3}
 

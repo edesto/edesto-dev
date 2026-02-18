@@ -27,23 +27,26 @@ class TestInit:
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
             assert result.exit_code == 0
-            assert Path("CLAUDE.md").exists()
+            assert Path("SKILLS.md").exists()
 
     def test_init_generates_valid_content(self, runner):
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
-            content = Path("CLAUDE.md").read_text()
+            content = Path("SKILLS.md").read_text()
             assert "esp32:esp32:esp32" in content
             assert "/dev/ttyUSB0" in content
             assert "Development Loop" in content
 
-    def test_init_also_creates_cursorrules(self, runner):
+    def test_init_creates_all_copies(self, runner):
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            skills = Path("SKILLS.md").read_text()
+            assert Path("CLAUDE.md").exists()
             assert Path(".cursorrules").exists()
-            claude = Path("CLAUDE.md").read_text()
-            cursor = Path(".cursorrules").read_text()
-            assert claude == cursor
+            assert Path("AGENTS.md").exists()
+            assert Path("CLAUDE.md").read_text() == skills
+            assert Path(".cursorrules").read_text() == skills
+            assert Path("AGENTS.md").read_text() == skills
 
     def test_init_unknown_board_fails(self, runner):
         with runner.isolated_filesystem():
@@ -53,17 +56,17 @@ class TestInit:
 
     def test_init_asks_before_overwrite(self, runner):
         with runner.isolated_filesystem():
-            Path("CLAUDE.md").write_text("existing content")
+            Path("SKILLS.md").write_text("existing content")
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"], input="n\n")
             assert result.exit_code == 0
-            assert Path("CLAUDE.md").read_text() == "existing content"
+            assert Path("SKILLS.md").read_text() == "existing content"
 
     def test_init_overwrites_when_confirmed(self, runner):
         with runner.isolated_filesystem():
-            Path("CLAUDE.md").write_text("existing content")
+            Path("SKILLS.md").write_text("existing content")
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"], input="y\n")
             assert result.exit_code == 0
-            assert "esp32:esp32:esp32" in Path("CLAUDE.md").read_text()
+            assert "esp32:esp32:esp32" in Path("SKILLS.md").read_text()
 
     def test_init_all_boards_work(self, runner):
         from edesto_dev.toolchains import list_toolchains
@@ -72,7 +75,7 @@ class TestInit:
                 with runner.isolated_filesystem():
                     result = runner.invoke(main, ["init", "--board", board.slug, "--port", "/dev/ttyUSB0"])
                     assert result.exit_code == 0, f"Failed for {board.slug}: {result.output}"
-                    assert Path("CLAUDE.md").exists()
+                    assert Path("SKILLS.md").exists()
 
 
 class TestInitAutoDetect:
@@ -82,8 +85,8 @@ class TestInitAutoDetect:
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["init"])
             assert result.exit_code == 0
-            assert Path("CLAUDE.md").exists()
-            content = Path("CLAUDE.md").read_text()
+            assert Path("SKILLS.md").exists()
+            content = Path("SKILLS.md").read_text()
             assert "esp32:esp32:esp32" in content
             assert "/dev/cu.usbserial-0001" in content
 
@@ -104,7 +107,7 @@ class TestInitAutoDetect:
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["init"], input="1\n")
             assert result.exit_code == 0
-            assert Path("CLAUDE.md").exists()
+            assert Path("SKILLS.md").exists()
 
     @patch("edesto_dev.cli.detect_all_boards", return_value=[])
     @patch("edesto_dev.cli.detect_toolchain", return_value=get_toolchain("arduino"))
@@ -134,7 +137,7 @@ class TestInitAutoDetect:
             with runner.isolated_filesystem():
                 result = runner.invoke(main, ["init", "--board", "esp32"])
                 assert result.exit_code == 0
-                content = Path("CLAUDE.md").read_text()
+                content = Path("SKILLS.md").read_text()
                 assert "/dev/cu.usbserial-0001" in content
 
 
@@ -143,7 +146,7 @@ class TestInitWithToolchain:
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0", "--toolchain", "arduino"])
             assert result.exit_code == 0
-            assert Path("CLAUDE.md").exists()
+            assert Path("SKILLS.md").exists()
 
     def test_unknown_toolchain(self, runner):
         with runner.isolated_filesystem():
@@ -196,11 +199,11 @@ class TestInitCustomFallback:
             user_input = "make build\nmake flash\n115200\n/dev/ttyUSB0\nMy Board\n"
             result = runner.invoke(main, ["init"], input=user_input)
             assert result.exit_code == 0
-            assert Path("CLAUDE.md").exists()
+            assert Path("SKILLS.md").exists()
             assert Path("edesto.toml").exists()
 
-            # Verify CLAUDE.md content
-            content = Path("CLAUDE.md").read_text()
+            # Verify SKILLS.md content
+            content = Path("SKILLS.md").read_text()
             assert "make build" in content
             assert "make flash" in content
             assert "My Board" in content
@@ -226,12 +229,12 @@ class TestIntegration:
     def test_full_workflow(self, runner):
         """Test the full init -> read -> verify workflow."""
         with runner.isolated_filesystem():
-            # Generate CLAUDE.md
+            # Generate SKILLS.md
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/cu.usbserial-0001"])
             assert result.exit_code == 0
 
-            # Verify CLAUDE.md content
-            content = Path("CLAUDE.md").read_text()
+            # Verify SKILLS.md content
+            content = Path("SKILLS.md").read_text()
             assert "# Embedded Development: ESP32" in content
             assert "esp32:esp32:esp32" in content
             assert "/dev/cu.usbserial-0001" in content
@@ -242,8 +245,10 @@ class TestIntegration:
             assert "[READY]" in content
             assert "ADC2" in content  # ESP32-specific pitfall
 
-            # Verify .cursorrules matches
+            # Verify all copies match
+            assert Path("CLAUDE.md").read_text() == content
             assert Path(".cursorrules").read_text() == content
+            assert Path("AGENTS.md").read_text() == content
 
     def test_help_output(self, runner):
         result = runner.invoke(main, ["--help"])
@@ -257,12 +262,12 @@ class TestIntegrationMultiToolchain:
     """End-to-end integration tests verifying the complete flow for different toolchains."""
 
     def test_arduino_project_flow(self, runner):
-        """Arduino project: .ino file -> edesto init -> CLAUDE.md with arduino-cli commands."""
+        """Arduino project: .ino file -> edesto init -> SKILLS.md with arduino-cli commands."""
         with runner.isolated_filesystem():
             Path("sketch.ino").write_text("void setup() { Serial.begin(115200); }")
             result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
             assert result.exit_code == 0
-            content = Path("CLAUDE.md").read_text()
+            content = Path("SKILLS.md").read_text()
             assert "arduino-cli compile" in content
             assert "arduino-cli upload" in content
             assert "/dev/ttyUSB0" in content
@@ -282,7 +287,7 @@ class TestIntegrationMultiToolchain:
             Path("platformio.ini").write_text("[env:esp32dev]\nboard = esp32dev\n")
             result = runner.invoke(main, ["init"])
             assert result.exit_code == 0
-            content = Path("CLAUDE.md").read_text()
+            content = Path("SKILLS.md").read_text()
             assert "pio run" in content
             assert "/dev/ttyUSB0" in content
             # Should NOT contain arduino-cli commands
@@ -300,7 +305,7 @@ class TestIntegrationMultiToolchain:
             Path("sdkconfig").write_text("")
             result = runner.invoke(main, ["init"])
             assert result.exit_code == 0
-            content = Path("CLAUDE.md").read_text()
+            content = Path("SKILLS.md").read_text()
             assert "idf.py build" in content
             assert "idf.py" in content
             assert "/dev/ttyUSB0" in content
@@ -318,7 +323,7 @@ class TestIntegrationMultiToolchain:
             Path("main.py").write_text("import machine\nprint('hello')")
             result = runner.invoke(main, ["init"])
             assert result.exit_code == 0
-            content = Path("CLAUDE.md").read_text()
+            content = Path("SKILLS.md").read_text()
             assert "mpremote" in content
             assert "/dev/ttyUSB0" in content
             # Should NOT contain arduino-cli commands
@@ -332,7 +337,7 @@ class TestIntegrationMultiToolchain:
             user_input = "make build\nmake flash PORT={port}\n9600\n/dev/ttyACM0\nMy Custom Board\n"
             result = runner.invoke(main, ["init"], input=user_input)
             assert result.exit_code == 0
-            content = Path("CLAUDE.md").read_text()
+            content = Path("SKILLS.md").read_text()
             assert "make build" in content
             assert "make flash" in content
             assert "/dev/ttyACM0" in content
@@ -367,7 +372,7 @@ class TestIntegrationMultiToolchain:
                 ]
                 result = runner.invoke(main, ["init"])
                 assert result.exit_code == 0
-                content = Path("CLAUDE.md").read_text()
+                content = Path("SKILLS.md").read_text()
                 # Custom commands from edesto.toml, not arduino-cli
                 assert "make build" in content
                 assert "arduino-cli" not in content

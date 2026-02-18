@@ -48,11 +48,11 @@ class Toolchain(ABC):
 
     @abstractmethod
     def compile_command(self, board: Board) -> str:
-        """Return the compile command string for CLAUDE.md."""
+        """Return the compile command string."""
 
     @abstractmethod
     def upload_command(self, board: Board, port: str) -> str:
-        """Return the upload command string for CLAUDE.md."""
+        """Return the upload command string."""
 
     @abstractmethod
     def serial_config(self, board: Board) -> dict:
@@ -60,7 +60,11 @@ class Toolchain(ABC):
 
     @abstractmethod
     def board_info(self, board: Board) -> dict:
-        """Return board-specific info for CLAUDE.md template."""
+        """Return board-specific info for the template."""
+
+    def setup_info(self, board: Board) -> str | None:
+        """Return setup/installation instructions, or None if not needed."""
+        return None
 
     def monitor_command(self, board: Board, port: str) -> str | None:
         """Return the serial monitor command, if the toolchain provides one."""

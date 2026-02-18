@@ -36,6 +36,9 @@ class EspIdfToolchain(Toolchain):
     def monitor_command(self, board: Board, port: str) -> str:
         return f"idf.py -p {port} monitor"
 
+    def setup_info(self, board: Board) -> str | None:
+        return "Activate ESP-IDF before compiling: `source $IDF_PATH/export.sh`"
+
     def serial_config(self, board: Board) -> dict:
         return {"baud_rate": board.baud_rate, "boot_delay": 5}
 

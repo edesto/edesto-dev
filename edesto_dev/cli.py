@@ -12,7 +12,7 @@ from edesto_dev.templates import render_from_toolchain
 
 @click.group()
 def main():
-    """Use Claude Code for embedded development."""
+    """Set up AI coding agents for embedded development."""
     pass
 
 
@@ -21,7 +21,7 @@ def main():
 @click.option("--port", type=str, help="Serial port (e.g. /dev/ttyUSB0, /dev/cu.usbserial-0001).")
 @click.option("--toolchain", "toolchain_name", type=str, help="Toolchain (e.g. arduino, platformio).")
 def init(board, port, toolchain_name):
-    """Generate a CLAUDE.md for your board."""
+    """Generate a SKILLS.md for your board."""
 
     # Resolve toolchain
     if toolchain_name:
@@ -130,19 +130,19 @@ def init(board, port, toolchain_name):
 
     content = render_from_toolchain(toolchain, board_def, port=port)
 
-    claude_path = Path("CLAUDE.md")
-    cursor_path = Path(".cursorrules")
+    skills_path = Path("SKILLS.md")
+    copies = [Path("CLAUDE.md"), Path(".cursorrules"), Path("AGENTS.md")]
 
-    if claude_path.exists():
-        if not click.confirm("CLAUDE.md already exists. Overwrite?"):
+    if skills_path.exists():
+        if not click.confirm("SKILLS.md already exists. Overwrite?"):
             click.echo("Aborted.")
             return
 
-    claude_path.write_text(content)
-    cursor_path.write_text(content)
+    skills_path.write_text(content)
+    for copy_path in copies:
+        copy_path.write_text(content)
 
-    click.echo(f"Generated CLAUDE.md for {board_def.name} on {port}")
-    click.echo("Also created .cursorrules for Cursor users.")
+    click.echo(f"Generated SKILLS.md for {board_def.name} on {port}. Also created: CLAUDE.md, .cursorrules, AGENTS.md")
 
 
 @main.command()

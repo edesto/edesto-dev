@@ -631,8 +631,16 @@ class ArduinoToolchain(Toolchain):
         """Return serial configuration for the board."""
         return {"baud_rate": board.baud_rate, "boot_delay": 3}
 
+    def setup_info(self, board: Board) -> str | None:
+        """Return arduino-cli core install command."""
+        if board.core_url:
+            return f"arduino-cli core install {board.core} --additional-urls {board.core_url}"
+        elif board.core:
+            return f"arduino-cli core install {board.core}"
+        return None
+
     def board_info(self, board: Board) -> dict:
-        """Return board-specific info for CLAUDE.md template."""
+        """Return board-specific info for the template."""
         return {
             "capabilities": board.capabilities,
             "pins": board.pins,

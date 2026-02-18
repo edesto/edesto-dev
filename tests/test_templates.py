@@ -1,4 +1,4 @@
-"""Tests for CLAUDE.md template rendering."""
+"""Tests for SKILLS.md template rendering."""
 
 import re
 
@@ -229,3 +229,58 @@ class TestRenderFromToolchain:
         assert "/dev/ttyUSB0" in result
         assert "Development Loop" in result
         assert "[READY]" in result
+
+    def test_has_setup_section_for_arduino(self):
+        from edesto_dev.templates import render_from_toolchain
+        from edesto_dev.toolchains.arduino import ArduinoToolchain
+        tc = ArduinoToolchain()
+        board = tc.get_board("esp32")
+        result = render_from_toolchain(tc, board, "/dev/ttyUSB0")
+        assert "## Setup" in result
+        assert "arduino-cli core install" in result
+
+    def test_has_troubleshooting_section(self):
+        from edesto_dev.templates import render_from_toolchain
+        from edesto_dev.toolchains.arduino import ArduinoToolchain
+        tc = ArduinoToolchain()
+        board = tc.get_board("esp32")
+        result = render_from_toolchain(tc, board, "/dev/ttyUSB0")
+        assert "## Troubleshooting" in result
+        assert "baud rate" in result.lower()
+        assert "Permission denied" in result
+
+    def test_validation_has_error_handling(self):
+        from edesto_dev.templates import render_from_toolchain
+        from edesto_dev.toolchains.arduino import ArduinoToolchain
+        tc = ArduinoToolchain()
+        board = tc.get_board("esp32")
+        result = render_from_toolchain(tc, board, "/dev/ttyUSB0")
+        assert "SerialException" in result
+        assert "[DONE]" in result
+
+    def test_capabilities_merged_with_includes(self):
+        from edesto_dev.templates import render_from_toolchain
+        from edesto_dev.toolchains.arduino import ArduinoToolchain
+        tc = ArduinoToolchain()
+        board = tc.get_board("esp32")
+        result = render_from_toolchain(tc, board, "/dev/ttyUSB0")
+        # WiFi capability should appear with its include on the same line
+        lines = result.split("\n")
+        wifi_lines = [l for l in lines if "Wifi" in l and "#include" in l]
+        assert wifi_lines, "WiFi capability should include #include directive"
+
+    def test_no_setup_section_when_not_needed(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="Board",
+            toolchain_name="tool",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            setup_info=None,
+        )
+        assert "## Setup" not in result
