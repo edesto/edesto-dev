@@ -106,9 +106,10 @@ class TestInitAutoDetect:
             assert result.exit_code == 0
             assert Path("CLAUDE.md").exists()
 
-    @patch("edesto_dev.cli.detect_all_boards")
-    def test_auto_detect_no_boards_shows_error(self, mock_detect, runner):
-        mock_detect.return_value = []
+    @patch("edesto_dev.cli.detect_all_boards", return_value=[])
+    @patch("edesto_dev.cli.detect_toolchain", return_value=get_toolchain("arduino"))
+    def test_auto_detect_no_boards_shows_error(self, mock_detect_tc, mock_detect, runner):
+        """When a toolchain IS detected but no boards on USB, show an error."""
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["init"])
             assert result.exit_code != 0
@@ -184,6 +185,41 @@ class TestDoctor:
     def test_doctor_warns_missing_arduino_cli(self, mock_which, runner):
         result = runner.invoke(main, ["doctor"])
         assert "not found" in result.output.lower() or "not installed" in result.output.lower()
+
+
+class TestInitCustomFallback:
+    @patch("edesto_dev.cli.detect_all_boards", return_value=[])
+    @patch("edesto_dev.cli.detect_toolchain", return_value=None)
+    def test_custom_fallback_prompts_user(self, mock_detect_tc, mock_detect_boards, runner):
+        with runner.isolated_filesystem():
+            # Simulate user input: compile, upload, baud, port, board name
+            user_input = "make build\nmake flash\n115200\n/dev/ttyUSB0\nMy Board\n"
+            result = runner.invoke(main, ["init"], input=user_input)
+            assert result.exit_code == 0
+            assert Path("CLAUDE.md").exists()
+            assert Path("edesto.toml").exists()
+
+            # Verify CLAUDE.md content
+            content = Path("CLAUDE.md").read_text()
+            assert "make build" in content
+            assert "make flash" in content
+            assert "My Board" in content
+
+            # Verify edesto.toml content
+            toml_content = Path("edesto.toml").read_text()
+            assert "make build" in toml_content
+            assert "make flash" in toml_content
+
+    @patch("edesto_dev.cli.detect_all_boards", return_value=[])
+    @patch("edesto_dev.cli.detect_toolchain", return_value=None)
+    def test_custom_fallback_saves_edesto_toml(self, mock_detect_tc, mock_detect_boards, runner):
+        with runner.isolated_filesystem():
+            user_input = "gcc -o firmware main.c\nopenocd -f upload.cfg\n9600\n/dev/ttyACM0\nSTM32\n"
+            result = runner.invoke(main, ["init"], input=user_input)
+            assert result.exit_code == 0
+            assert "edesto.toml" in result.output
+            toml = Path("edesto.toml").read_text()
+            assert "9600" in toml
 
 
 class TestIntegration:

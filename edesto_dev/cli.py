@@ -76,9 +76,33 @@ def init(board, port, toolchain_name):
         # Full auto-detection
         detected = detect_all_boards()
         if not detected:
-            click.echo("Error: No boards detected. Is a board connected via USB?")
-            click.echo("You can specify manually: edesto init --board esp32 --port /dev/ttyUSB0")
-            raise SystemExit(1)
+            if not toolchain:
+                # No toolchain from project files, no boards from USB
+                # Ask user for custom commands
+                click.echo("No toolchain detected and no boards found.")
+                click.echo("Let's configure manually.\n")
+
+                compile_cmd = click.prompt("What command compiles your firmware?")
+                upload_cmd = click.prompt("What command uploads to the board?")
+                baud = click.prompt("What baud rate does your board use?", type=int, default=115200)
+                port = click.prompt("What serial port is your board on?")
+                board_name = click.prompt("What is your board called?", default="Custom Board")
+
+                # Create custom toolchain
+                from edesto_dev.toolchains.custom import CustomToolchain
+                from edesto_dev.toolchain import Board
+                toolchain = CustomToolchain(compile_cmd=compile_cmd, upload_cmd=upload_cmd, baud_rate=baud)
+                board_def = Board(slug="custom", name=board_name, baud_rate=baud)
+
+                # Save to edesto.toml
+                toml_content = f'[toolchain]\nname = "custom"\ncompile = "{compile_cmd}"\nupload = "{upload_cmd}"\n\n[serial]\nbaud_rate = {baud}\nport = "{port}"\n'
+                Path("edesto.toml").write_text(toml_content)
+                click.echo(f"\nSaved configuration to edesto.toml")
+            else:
+                # Toolchain detected from files but no boards on USB
+                click.echo("Error: No boards detected. Is a board connected via USB?")
+                click.echo("You can specify manually: edesto init --board <board> --port <port>")
+                raise SystemExit(1)
         elif len(detected) == 1:
             board_def = detected[0].board
             port = detected[0].port
