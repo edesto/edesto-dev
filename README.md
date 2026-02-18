@@ -36,6 +36,16 @@ edesto init --board esp32 --port /dev/cu.usbserial-0001
 edesto init --board esp32 --port /dev/ttyUSB0 --toolchain arduino
 ```
 
+### JTAG/SWD Flashing
+
+If your board is connected through a JTAG debugger (ST-Link, J-Link, CMSIS-DAP) instead of USB serial:
+
+```bash
+edesto init --board stm32-nucleo --upload jtag
+```
+
+This walks you through selecting your debug probe and target chip, generates an OpenOCD-based flash command, and optionally configures a serial port for monitoring. If you run `edesto init` with no USB boards detected and OpenOCD installed, it will offer JTAG setup automatically.
+
 ## How It Works
 
 `edesto init` detects your project and generates a `SKILLS.md` (plus copies as `CLAUDE.md`, `.cursorrules`, and `AGENTS.md`) that gives your AI agent:
@@ -97,6 +107,7 @@ If a tool isn't installed, its section is simply omitted — the agent won't try
 edesto init                                     # Auto-detect everything
 edesto init --board esp32                       # Specify board, auto-detect port
 edesto init --board esp32 --port /dev/ttyUSB0   # Fully manual
+edesto init --board stm32-nucleo --upload jtag  # Flash via JTAG/SWD
 edesto init --toolchain platformio              # Force a specific toolchain
 edesto boards                                   # List supported boards
 edesto boards --toolchain arduino               # Filter by toolchain
@@ -113,9 +124,10 @@ Three example projects in `examples/`, each with an intentional bug for your AI 
 
 ## Prerequisites
 
-- A supported board connected via USB
+- A supported board connected via USB or JTAG debugger
 - Python 3.10+
 - Your toolchain's CLI installed (e.g., `arduino-cli`, `pio`, `idf.py`, `mpremote`)
+- For JTAG flashing: `openocd` on PATH
 - Optional: debug tools (`logic2-automation`, `openocd`, `pyvisa`) for advanced debugging
 
 Run `edesto doctor` to check your setup.
