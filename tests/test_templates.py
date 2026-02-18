@@ -343,3 +343,37 @@ class TestDebugToolSections:
             debug_tools=["saleae"],
         )
         assert "ask the user to verify" in result.lower() or "verify" in result.lower()
+
+    def test_openocd_section_when_detected(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["openocd"],
+        )
+        assert "### JTAG/SWD" in result
+        assert "OpenOCD" in result
+        assert "CFSR" in result or "fault" in result.lower()
+
+    def test_openocd_section_absent_when_not_detected(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=[],
+        )
+        assert "### JTAG/SWD" not in result

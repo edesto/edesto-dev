@@ -307,7 +307,110 @@ If the capture shows no transitions or unexpected data, ask the user to verify t
 
 
 def _openocd_section() -> str:
-    return ""
+    return """
+### JTAG/SWD
+
+Use OpenOCD to inspect CPU state, read registers and memory, diagnose crashes, and flash firmware. This is the right tool when the board crashes, stops responding, hits a HardFault, or you need to inspect peripheral registers directly.
+
+**Start OpenOCD** (run in a separate terminal — it stays running as a server):
+
+```bash
+openocd -f interface/cmsis-dap.cfg -f target/stm32f4x.cfg
+```
+
+Replace the interface and target config files to match your debug probe and chip. Common interfaces: `cmsis-dap.cfg`, `stlink.cfg`, `jlink.cfg`. Common targets: `stm32f4x.cfg`, `nrf52.cfg`, `esp32.cfg`, `rp2040.cfg`.
+
+**Connect and inspect** via the TCL RPC port (6666):
+
+```python
+import socket, sys
+
+class OpenOCD:
+    TERM = b"\\x1a"
+
+    def __init__(self, host="localhost", port=6666, timeout=10.0):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.sock.connect((host, port))
+        except ConnectionRefusedError:
+            print("Could not connect to OpenOCD on port 6666.")
+            print("Start it with: openocd -f interface/<probe>.cfg -f target/<chip>.cfg")
+            sys.exit(1)
+        self.sock.settimeout(timeout)
+
+    def cmd(self, command):
+        self.sock.sendall(command.encode() + self.TERM)
+        buf = b""
+        while True:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("OpenOCD closed")
+            buf += chunk
+            if buf.endswith(self.TERM):
+                break
+        return buf[:-1].decode("utf-8", errors="replace").strip()
+
+    def close(self):
+        self.sock.close()
+
+ocd = OpenOCD()
+
+# Halt the CPU
+ocd.cmd("halt")
+
+# Read core registers
+print("PC:", ocd.cmd("reg pc"))
+print("SP:", ocd.cmd("reg sp"))
+print("LR:", ocd.cmd("reg lr"))
+
+# Read Cortex-M fault registers (fixed addresses, all Cortex-M3/M4/M7/M33)
+print("CFSR:", ocd.cmd("mdw 0xE000ED28"))   # Configurable Fault Status
+print("HFSR:", ocd.cmd("mdw 0xE000ED2C"))   # HardFault Status
+print("MMFAR:", ocd.cmd("mdw 0xE000ED34"))  # MemManage Fault Address
+print("BFAR:", ocd.cmd("mdw 0xE000ED38"))   # BusFault Address
+
+# Read memory (e.g., 16 words starting at RAM base)
+print("RAM:", ocd.cmd("mdw 0x20000000 16"))
+
+# Resume execution
+ocd.cmd("resume")
+ocd.close()
+```
+
+**Common operations:**
+- `halt` — stop the CPU
+- `resume` — continue execution
+- `step` — single-step one instruction
+- `reg` — print all registers
+- `reg pc` / `reg sp` / `reg lr` — read a specific register
+- `mdw <addr> [count]` — read 32-bit words from memory
+- `mww <addr> <value>` — write a 32-bit word to memory
+- `bp <addr> 4 hw` — set a hardware breakpoint
+- `rbp <addr>` — remove a breakpoint
+- `flash write_image erase firmware.elf` — flash firmware
+- `reset run` — reset and run from the start
+- `reset halt` — reset and halt before any code runs
+
+**One-shot flash and verify** (no persistent server needed):
+
+```bash
+openocd -f interface/cmsis-dap.cfg -f target/stm32f4x.cfg \\
+  -c "program firmware.elf verify reset exit"
+```
+
+**Diagnosing a HardFault:** If CFSR is non-zero after a crash, decode the bits:
+- Bit 25 (DIVBYZERO): divide by zero
+- Bit 24 (UNALIGNED): unaligned memory access
+- Bit 18 (INVPC): invalid PC on exception return
+- Bit 17 (INVSTATE): invalid EPSR state (often a thumb bit issue)
+- Bit 16 (UNDEFINSTR): undefined instruction
+- Bit 15 (BFARVALID): BFAR holds the faulting address
+- Bit 9 (IMPRECISERR): imprecise bus error
+- Bit 8 (PRECISERR): precise bus error (BFAR valid)
+- Bit 1 (DACCVIOL): data access violation
+- Bit 0 (IACCVIOL): instruction access violation
+
+If OpenOCD cannot connect or returns errors, ask the user to verify that the JTAG/SWD debug probe is connected to the board and that the correct interface/target config files are being used."""
 
 
 def _scope_section() -> str:
