@@ -233,7 +233,77 @@ Save this as `read_serial.py` and run with `python read_serial.py`. Parse the ou
 
 
 def _saleae_section() -> str:
-    return ""
+    return """
+### Logic Analyzer
+
+Use the Saleae Logic 2 automation API to capture and decode digital signals. This is the right tool when you need to verify SPI/I2C/UART protocol timing, decode bus traffic, or check signal edges.
+
+```python
+from saleae import automation
+from pathlib import Path
+import sys
+
+OUTPUT_DIR = Path("saleae_capture")
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+try:
+    manager = automation.Manager.connect(port=10430)
+except Exception as err:
+    print("Could not connect to Saleae Logic 2: " + str(err))
+    print("Ensure Logic 2 is running with: Logic --automation")
+    sys.exit(1)
+
+device_config = automation.LogicDeviceConfiguration(
+    enabled_digital_channels=[0, 1, 2, 3],
+    digital_sample_rate=10_000_000,
+    digital_threshold_volts=3.3,
+)
+
+capture_config = automation.CaptureConfiguration(
+    capture_mode=automation.TimedCaptureMode(duration_seconds=2.0)
+)
+
+with manager.start_capture(
+    device_configuration=device_config,
+    capture_configuration=capture_config,
+) as capture:
+    capture.wait()
+
+    # Add a protocol analyzer — change to 'I2C', 'UART', etc. as needed
+    spi = capture.add_analyzer('SPI', label='SPI Bus', settings={
+        'MISO': 0,
+        'Clock': 1,
+        'Enable': 2,
+        'Bits per Transfer': '8 Bits per Transfer (Standard)',
+    })
+
+    # Export decoded protocol data
+    capture.export_data_table(
+        filepath=str(OUTPUT_DIR / "decoded.csv"),
+        analyzers=[spi],
+    )
+
+    # Export raw digital data
+    capture.export_raw_data_csv(
+        directory=str(OUTPUT_DIR),
+        digital_channels=[0, 1, 2, 3],
+    )
+
+print("Capture saved to", OUTPUT_DIR)
+# Read decoded.csv to check protocol data
+import csv
+with open(OUTPUT_DIR / "decoded.csv") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        print(row)
+```
+
+Adapt the channel numbers, sample rate, and protocol analyzer to match your wiring:
+- **SPI**: typically 3-4 channels (MISO, CLK, CS, optionally MOSI)
+- **I2C**: 2 channels (SDA, SCL)
+- **UART**: 1 channel (TX or RX)
+
+If the capture shows no transitions or unexpected data, ask the user to verify that the logic analyzer probes are connected to the correct pins and that the ground clip is attached."""
 
 
 def _openocd_section() -> str:

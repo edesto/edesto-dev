@@ -291,3 +291,55 @@ class TestRenderFromToolchain:
             setup_info=None,
         )
         assert "## Setup" not in result
+
+
+class TestDebugToolSections:
+    def test_saleae_section_when_detected(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["saleae"],
+        )
+        assert "### Logic Analyzer" in result
+        assert "Manager.connect" in result
+        assert "export_data_table" in result
+
+    def test_saleae_section_absent_when_not_detected(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=[],
+        )
+        assert "### Logic Analyzer" not in result
+
+    def test_saleae_has_connection_check_guidance(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["saleae"],
+        )
+        assert "ask the user to verify" in result.lower() or "verify" in result.lower()
