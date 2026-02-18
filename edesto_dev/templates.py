@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from edesto_dev.boards import Board
+from edesto_dev.toolchain import Board
 
 
 def render_generic_template(

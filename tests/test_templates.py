@@ -3,8 +3,23 @@
 import re
 
 import pytest
-from edesto_dev.boards import get_board, list_boards
+from edesto_dev.toolchains.arduino import ArduinoToolchain
 from edesto_dev.templates import render_template
+
+_arduino = ArduinoToolchain()
+
+
+def get_board(slug):
+    """Helper: look up a board via the Arduino toolchain."""
+    board = _arduino.get_board(slug)
+    if board is None:
+        raise KeyError(f"Unknown board: {slug}")
+    return board
+
+
+def list_boards():
+    """Helper: list all boards via the Arduino toolchain."""
+    return _arduino.list_boards()
 
 
 class TestRenderTemplate:
