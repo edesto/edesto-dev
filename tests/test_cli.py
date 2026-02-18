@@ -549,3 +549,73 @@ class TestInitJtag:
             assert result.exit_code == 0
             content = Path("SKILLS.md").read_text()
             assert "connected via USB" in content
+
+
+class TestInitJtagIntegration:
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_full_jtag_workflow(self, mock_debug, runner):
+        """Full JTAG init -> verify SKILLS.md + edesto.toml + copies."""
+        with runner.isolated_filesystem():
+            # Input: probe (1=ST-Link), target (accept default stm32f4x), serial? (n)
+            user_input = "1\n\nn\n"
+            result = runner.invoke(main, ["init", "--board", "stm32-nucleo", "--upload", "jtag"], input=user_input)
+            assert result.exit_code == 0
+
+            # Verify SKILLS.md content
+            content = Path("SKILLS.md").read_text()
+            assert "STM32 Nucleo-64" in content
+            assert "JTAG" in content
+            assert "stlink" in content.lower()
+            assert "stm32f4x" in content
+            assert "openocd" in content.lower()
+            assert "### JTAG/SWD" in content
+            assert "connected via USB" not in content
+            # Should have compile command from Arduino toolchain
+            assert "arduino-cli compile" in content
+            # Should have OpenOCD upload command
+            assert "program build/firmware.elf verify reset exit" in content
+            # Should NOT have serial section (user said no)
+            assert "### Serial Output" not in content
+
+            # Verify copies match
+            assert Path("CLAUDE.md").read_text() == content
+            assert Path(".cursorrules").read_text() == content
+            assert Path("AGENTS.md").read_text() == content
+
+            # Verify edesto.toml
+            assert Path("edesto.toml").exists()
+            toml = Path("edesto.toml").read_text()
+            assert "[jtag]" in toml
+            assert 'interface = "stlink"' in toml
+            assert 'target = "stm32f4x"' in toml
+            # No [serial] section since user declined
+            assert "[serial]" not in toml
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_full_jtag_workflow_with_serial(self, mock_debug, runner):
+        """Full JTAG init with serial port -> verify serial section present."""
+        with runner.isolated_filesystem():
+            # Input: probe (1=ST-Link), target (accept default), serial? (y), port, baud
+            user_input = "1\n\ny\n/dev/cu.usbmodem1103\n115200\n"
+            result = runner.invoke(main, ["init", "--board", "stm32-nucleo", "--upload", "jtag"], input=user_input)
+            assert result.exit_code == 0
+
+            content = Path("SKILLS.md").read_text()
+            assert "JTAG" in content
+            assert "### Serial Output" in content
+            assert "/dev/cu.usbmodem1103" in content
+            assert "115200" in content
+
+            # Verify edesto.toml has both sections
+            toml = Path("edesto.toml").read_text()
+            assert "[jtag]" in toml
+            assert "[serial]" in toml
+            assert "/dev/cu.usbmodem1103" in toml
+
+    @patch("edesto_dev.cli.detect_debug_tools", return_value=["openocd"])
+    def test_upload_jtag_requires_board(self, mock_debug, runner):
+        """--upload jtag without --board fails with helpful error."""
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--upload", "jtag"])
+            assert result.exit_code != 0
+            assert "board" in result.output.lower()
