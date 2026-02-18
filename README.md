@@ -2,7 +2,7 @@
 
 **Teach AI coding agents how to compile, flash, and validate firmware on your hardware.**
 
-AI coding agents stop at the terminal. `edesto init` gives them the full embedded development loop — compile, flash, read serial output, iterate — so they can autonomously develop and debug firmware on real hardware. Works with Claude Code, Cursor, Codex, and OpenClaw.
+AI coding agents stop at the terminal. `edesto init` gives them the full embedded development loop: compile, flash, on-device debugging, iterate. Now they can autonomously develop and debug firmware on real hardware. Works with Claude Code, Cursor, Codex, and OpenClaw.
 
 
 https://github.com/user-attachments/assets/f1d4719d-ed60-406e-a274-0b0f2b06ac21
@@ -22,6 +22,7 @@ pip install edesto-dev
 edesto init
 
 # 2. Open your AI coding agent in the same directory
+claude
 
 # 3. Tell it what to do:
 # "The sensor readings are wrong. Find and fix the bug."
@@ -55,7 +56,7 @@ This walks you through selecting your debug probe and target chip, generates an 
 3. **Board-specific** pin references, capabilities, and common pitfalls
 4. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
 
-The debugging step is what makes this work. Your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. When you have additional debug tools installed, the agent can also drive them programmatically.
+The debugging step is what makes this work. For example, your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. When you have additional debug tools installed, the agent can also drive them programmatically.
 
 ## Supported Toolchains
 
