@@ -377,3 +377,37 @@ class TestDebugToolSections:
             debug_tools=[],
         )
         assert "### JTAG/SWD" not in result
+
+    def test_scope_section_when_detected(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=["scope"],
+        )
+        assert "### Oscilloscope" in result
+        assert "pyvisa" in result
+        assert "FREQuency" in result or "frequency" in result.lower()
+
+    def test_scope_section_absent_when_not_detected(self):
+        from edesto_dev.templates import render_generic_template
+        result = render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=[],
+        )
+        assert "### Oscilloscope" not in result

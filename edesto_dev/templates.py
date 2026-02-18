@@ -414,7 +414,71 @@ If OpenOCD cannot connect or returns errors, ask the user to verify that the JTA
 
 
 def _scope_section() -> str:
-    return ""
+    return """
+### Oscilloscope
+
+Use a SCPI-compatible oscilloscope to measure voltage levels, PWM frequency/duty cycle, signal timing, and rise times. This is the right tool when you need to verify electrical behavior — that a GPIO actually toggles, that a PWM is at the right frequency, or that voltage levels are within spec.
+
+```python
+import pyvisa
+import sys
+
+rm = pyvisa.ResourceManager()
+resources = rm.list_resources()
+if not resources:
+    print("No oscilloscope found. Check USB or network connection.")
+    sys.exit(1)
+
+# Connect to the first detected instrument
+scope = rm.open_resource(resources[0])
+scope.timeout = 10000
+print("Connected:", scope.query("*IDN?").strip())
+
+# Configure for a 3.3V digital signal on Channel 1
+scope.write(":CHANnel1:DISPlay ON")
+scope.write(":CHANnel1:SCALe 1.0")       # 1 V/div
+scope.write(":CHANnel1:OFFSet 1.65")     # Center 3.3V signal
+scope.write(":CHANnel1:COUPling DC")
+
+# Set trigger on rising edge at 1.65V (mid-VCC)
+scope.write(":TRIGger:MODE EDGE")
+scope.write(":TRIGger:EDGe:SOURce CHANnel1")
+scope.write(":TRIGger:EDGe:SLOPe POSitive")
+scope.write(":TRIGger:EDGe:LEVel 1.65")
+
+# Set timebase (adjust for expected signal frequency)
+scope.write(":TIMebase:SCALe 0.001")     # 1 ms/div
+
+# Run and wait for trigger
+scope.write(":RUN")
+import time; time.sleep(2)
+
+# Read measurements
+scope.write(":MEASure:SOURce CHANnel1")
+freq = scope.query(":MEASure:FREQuency?").strip()
+duty = scope.query(":MEASure:DUTYcycle?").strip()
+vpp  = scope.query(":MEASure:VPP?").strip()
+vmax = scope.query(":MEASure:VMAX?").strip()
+rise = scope.query(":MEASure:RISetime?").strip()
+
+print("Frequency: " + freq + " Hz")
+print("Duty cycle: " + duty + " %")
+print("Vpp: " + vpp + " V")
+print("Vmax: " + vmax + " V")
+print("Rise time: " + rise + " s")
+
+scope.write(":RUN")
+scope.close()
+```
+
+Adapt the channel, voltage scale, timebase, and trigger level to match your signal. Common adjustments:
+- **PWM at 1 kHz**: `:TIMebase:SCALe 0.0005` (500 us/div shows ~2 periods)
+- **I2C at 400 kHz**: `:TIMebase:SCALe 0.000005` (5 us/div)
+- **5V logic**: `:CHANnel1:SCALe 2.0`, trigger at 2.5V
+
+**Vendor differences:** Rigol uses `:MEASure:FREQ?`, Keysight uses `:MEASure:FREQuency?`, Siglent uses `:MEASure:FREQuency?` on newer firmware. If a command returns an error, check your scope's programming guide.
+
+If the scope shows no signal or unexpected readings, ask the user to verify that the oscilloscope probe is connected to the correct pin and that the ground clip is attached."""
 
 
 def _troubleshooting(port: str, baud_rate: int, boot_delay: int) -> str:
