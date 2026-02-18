@@ -16,7 +16,7 @@ def detect_toolchain(path: Path) -> Toolchain | None:
     Checks for edesto.toml first (user override), then scans project
     files in priority order.
     """
-    # 1. Check for edesto.toml override (will be implemented in Task 11)
+    # 1. Check for edesto.toml override
     toml_path = path / "edesto.toml"
     if toml_path.exists():
         custom = _load_custom_toolchain(toml_path)

@@ -74,7 +74,7 @@ class TestRenderTemplate:
     def test_has_serial_conventions(self):
         board = get_board("esp32")
         result = render_template(board, port="/dev/ttyUSB0")
-        assert "Serial.begin(115200)" in result
+        assert "115200" in result
         assert "[READY]" in result
         assert "[ERROR]" in result
         assert "[SENSOR]" in result

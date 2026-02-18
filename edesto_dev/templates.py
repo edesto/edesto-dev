@@ -115,7 +115,7 @@ def _generic_dev_loop(compile_command: str, upload_command: str, boot_delay: int
 
 Every time you change code, follow this exact sequence:
 
-1. Edit the .ino file (or .cpp/.h files)
+1. Edit your firmware source files
 2. Compile: `{compile_command}`
 3. If compile fails, read the errors, fix them, and recompile. Do NOT flash broken code.
 4. Flash: `{upload_command}`
@@ -151,8 +151,8 @@ ser.close()
 Save this as `read_serial.py` and run with `python read_serial.py`. Parse the output to check if your firmware is behaving correctly.
 
 **Important serial conventions for your firmware:**
-- Always use `Serial.begin({baud_rate})` in setup()
-- Use `Serial.println()` (not `Serial.print()`) so each message is a complete line
+- Configure your serial port at {baud_rate} baud
+- Send complete lines (newline-terminated) so each message can be parsed
 - Print `[READY]` when initialization is complete
 - Print `[ERROR] <description>` for any error conditions
 - Use tags for structured output: `[SENSOR] temp=23.4`, `[STATUS] running`"""
