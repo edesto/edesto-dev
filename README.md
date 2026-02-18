@@ -1,5 +1,7 @@
 # edesto-dev
 
+Join our [Discord](https://discord.gg/3bu98EcdAC)
+
 **Teach AI coding agents how to compile, flash, and validate firmware on your hardware.**
 
 AI coding agents stop at the terminal. `edesto init` gives them the full embedded development loop: compile, flash, on-device debugging, iterate. Now they can autonomously develop and debug firmware on real hardware. Works with Claude Code, Cursor, Codex, and OpenClaw.
