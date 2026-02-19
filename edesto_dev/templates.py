@@ -31,6 +31,7 @@ def render_generic_template(
         _debugging(port, baud_rate, boot_delay, tools),
         _troubleshooting(port, baud_rate, boot_delay),
         _datasheets(board_name),
+        _rtos_guidance(toolchain_name, board_name),
         _generic_board_info(board_name, board_info),
     ]
     return "\n".join(s for s in sections if s)
@@ -668,3 +669,237 @@ Nordic nRF documentation is organized as:
 Key sections to look for: "Register overview" tables, "Instantiation" tables (base addresses per peripheral instance), "Pin configuration" chapter for GPIO setup."""
 
     return ""
+
+
+def _rtos_guidance(toolchain_name: str, board_name: str) -> str:
+    """Return RTOS-specific guidance based on toolchain and board."""
+    name = toolchain_name.lower()
+    if name == "zephyr":
+        return _zephyr_rtos_section()
+    if name == "espidf":
+        return _freertos_section()
+    if name == "arduino" and "esp32" in board_name.lower():
+        return _freertos_section()
+    return ""
+
+
+def _freertos_section() -> str:
+    return """
+## RTOS
+
+This project runs on **FreeRTOS**. All application code executes inside FreeRTOS tasks.
+
+### Core Concepts
+
+- **Tasks** are the basic unit of execution — each task has its own stack, priority, and state (running, ready, blocked, suspended).
+- The **scheduler** is preemptive by default: a higher-priority task that becomes ready will immediately preempt a lower-priority one.
+- **Tick rate** (`configTICK_RATE_HZ`, typically 1000) determines the time resolution for delays and timeouts.
+- Priority numbers: higher number = higher priority. `tskIDLE_PRIORITY` (0) is the lowest.
+
+### Task Creation
+
+```c
+// Basic task creation
+xTaskCreate(
+    task_function,    // Function pointer
+    "TaskName",       // Debug name
+    2048,             // Stack size (bytes on ESP32, words on other ports)
+    NULL,             // Parameter passed to task
+    5,                // Priority
+    &task_handle      // Handle (can be NULL if not needed)
+);
+
+// ESP32-specific: pin task to a core (0 or 1)
+xTaskCreatePinnedToCore(
+    task_function, "TaskName", 2048, NULL, 5, &task_handle,
+    1  // Core ID: 0 = protocol core, 1 = application core
+);
+```
+
+### Synchronization Primitives
+
+**Semaphores** — signaling between tasks or from ISRs:
+```c
+SemaphoreHandle_t sem = xSemaphoreCreateBinary();
+xSemaphoreGive(sem);                              // Signal
+xSemaphoreTake(sem, pdMS_TO_TICKS(1000));         // Wait (up to 1s)
+```
+
+**Mutexes** — protect shared resources (supports priority inheritance):
+```c
+SemaphoreHandle_t mtx = xSemaphoreCreateMutex();
+xSemaphoreTake(mtx, portMAX_DELAY);  // Lock
+// ... critical section ...
+xSemaphoreGive(mtx);                 // Unlock
+```
+
+**Queues** — pass data between tasks:
+```c
+QueueHandle_t q = xQueueCreate(10, sizeof(int));
+int val = 42;
+xQueueSend(q, &val, portMAX_DELAY);               // Send
+xQueueReceive(q, &val, pdMS_TO_TICKS(500));        // Receive
+```
+
+### Timers
+
+```c
+TimerHandle_t timer = xTimerCreate(
+    "MyTimer", pdMS_TO_TICKS(1000), pdTRUE,  // 1s, auto-reload
+    NULL, timer_callback
+);
+xTimerStart(timer, 0);
+```
+
+### ISR Rules
+
+**Critical:** ISR functions must use `FromISR` variants of all FreeRTOS API calls:
+```c
+void IRAM_ATTR my_isr(void *arg) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xSemaphoreGiveFromISR(sem, &xHigherPriorityTaskWoken);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+```
+- Never call `xSemaphoreTake()`, `xQueueSend()`, or any blocking function in an ISR — use `xSemaphoreGiveFromISR()`, `xQueueSendFromISR()`, etc.
+- Always check `xHigherPriorityTaskWoken` and call `portYIELD_FROM_ISR()` to trigger a context switch if needed.
+
+### Common Pitfalls
+
+- **Stack overflow** — enable `configCHECK_FOR_STACK_OVERFLOW` (set to 2) during development. A stack overflow silently corrupts memory and causes random crashes.
+- **Priority inversion** — use mutexes (not binary semaphores) for resource protection; mutexes support priority inheritance.
+- **Watchdog starvation** — on ESP32, the idle task feeds the watchdog. If a high-priority task never blocks, the watchdog triggers. Always include a `vTaskDelay()` or blocking call in long-running loops.
+- **`vTaskDelay()` vs `vTaskDelayUntil()`** — `vTaskDelay()` delays *from now*; `vTaskDelayUntil()` delays *from the last wake time*, giving more precise periodic timing.
+- **Forgetting `portMAX_DELAY`** — passing `0` as timeout means "don't wait" and returns immediately if the resource isn't available."""
+
+
+def _zephyr_rtos_section() -> str:
+    return """
+## RTOS
+
+This project runs on **Zephyr RTOS**. All application code executes inside Zephyr threads.
+
+### Core Concepts
+
+- **Threads** are the basic unit of execution — each thread has its own stack, priority, and scheduling policy.
+- **Priority model**: lower number = higher priority. Negative priorities are cooperative (never preempted), non-negative are preemptive.
+- **Cooperative threads** (priority < 0) run until they explicitly yield or block — useful for critical sections.
+- **Preemptive threads** (priority >= 0) can be preempted by higher-priority threads at any time.
+
+### Thread Creation
+
+```c
+// Static thread definition (preferred — allocated at compile time)
+K_THREAD_STACK_DEFINE(my_stack, 1024);
+struct k_thread my_thread_data;
+
+k_thread_create(&my_thread_data, my_stack,
+    K_THREAD_STACK_SIZEOF(my_stack),
+    my_thread_fn,        // Entry point
+    NULL, NULL, NULL,    // Up to 3 arguments
+    5,                   // Priority (lower = higher priority)
+    0,                   // Options (0 or K_ESSENTIAL, K_FP_REGS, etc.)
+    K_NO_WAIT            // Start delay (K_NO_WAIT = start immediately)
+);
+
+// Compile-time thread definition (even simpler)
+K_THREAD_DEFINE(my_tid, 1024, my_thread_fn, NULL, NULL, NULL, 5, 0, 0);
+```
+
+### Synchronization Primitives
+
+**Semaphores** — signaling between threads or from ISRs:
+```c
+K_SEM_DEFINE(my_sem, 0, 1);          // Static (initial=0, limit=1)
+k_sem_give(&my_sem);                  // Signal
+k_sem_take(&my_sem, K_MSEC(1000));   // Wait (up to 1s)
+```
+
+**Mutexes** — protect shared resources (supports priority inheritance):
+```c
+K_MUTEX_DEFINE(my_mutex);
+k_mutex_lock(&my_mutex, K_FOREVER);  // Lock
+// ... critical section ...
+k_mutex_unlock(&my_mutex);           // Unlock
+```
+
+**Message Queues** — pass data between threads:
+```c
+K_MSGQ_DEFINE(my_msgq, sizeof(int), 10, 4);  // 10 items, 4-byte aligned
+int val = 42;
+k_msgq_put(&my_msgq, &val, K_FOREVER);       // Send
+k_msgq_get(&my_msgq, &val, K_MSEC(500));     // Receive
+```
+
+### Work Queues
+
+Defer processing to a worker thread (useful for offloading work from ISRs):
+```c
+struct k_work my_work;
+
+void work_handler(struct k_work *work) {
+    // Runs in system work queue thread
+}
+
+k_work_init(&my_work, work_handler);
+k_work_submit(&my_work);  // ISR-safe
+```
+
+### Timers
+
+```c
+K_TIMER_DEFINE(my_timer, timer_expiry_fn, NULL);
+k_timer_start(&my_timer, K_MSEC(1000), K_MSEC(1000));  // Initial delay, period
+```
+
+### Logging
+
+Zephyr has a built-in logging subsystem — prefer it over `printk()`:
+```c
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(my_module, LOG_LEVEL_INF);
+
+LOG_INF("System started, version %d", version);
+LOG_ERR("Failed to read sensor: %d", err);
+LOG_DBG("Raw value: 0x%04x", raw);
+```
+Enable in `prj.conf`: `CONFIG_LOG=y`
+
+### Kconfig (`prj.conf`)
+
+Kernel features are enabled via Kconfig options in `prj.conf`:
+```
+CONFIG_GPIO=y
+CONFIG_I2C=y
+CONFIG_SPI=y
+CONFIG_LOG=y
+CONFIG_SERIAL=y
+CONFIG_CONSOLE=y
+CONFIG_UART_CONSOLE=y
+```
+If a subsystem API returns `-ENOTSUP` or a header is missing, the Kconfig option is likely not enabled.
+
+### Device Tree
+
+Hardware is described in `.dts` and `.overlay` files, accessed in code via macros:
+```c
+#include <zephyr/drivers/gpio.h>
+#define LED_NODE DT_NODELABEL(led0)
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED_NODE, gpios);
+```
+Use `.overlay` files in your project to customize pin assignments without modifying board-level `.dts` files.
+
+### ISR Rules
+
+- `k_sem_give()` is ISR-safe — use it to signal threads from interrupt handlers.
+- `k_mutex_lock()` is **NOT** ISR-safe — never call it from an ISR.
+- Use `k_work_submit()` to defer complex processing from ISRs to a work queue thread.
+
+### Common Pitfalls
+
+- **Stack sizing** — use `K_THREAD_STACK_DEFINE()` and size generously during development. Enable `CONFIG_THREAD_ANALYZER=y` to monitor stack usage.
+- **Missing Kconfig options** — forgetting to enable `CONFIG_*` options is the #1 cause of build errors and missing functionality. If an API call doesn't compile or returns an error, check Kconfig first.
+- **Priority confusion** — Zephyr uses lower number = higher priority (opposite of FreeRTOS). Priority 0 is higher than priority 5.
+- **Cooperative vs preemptive** — cooperative threads (negative priority) are never preempted. If your thread never yields, no other thread of equal or lower priority will run.
+- **Device tree mismatches** — if `DT_NODELABEL()` returns a build error, the label doesn't exist in the device tree. Check the board's `.dts` file or add an `.overlay`.
+- **Forgetting `K_FOREVER` vs `K_NO_WAIT`** — `K_FOREVER` blocks until available, `K_NO_WAIT` returns immediately with an error if unavailable. Choose deliberately."""

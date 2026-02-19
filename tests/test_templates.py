@@ -293,6 +293,130 @@ class TestRenderFromToolchain:
         assert "## Setup" not in result
 
 
+class TestRtosSection:
+    def _render(self, toolchain_name, board_name="Test Board"):
+        from edesto_dev.templates import render_generic_template
+        return render_generic_template(
+            board_name=board_name,
+            toolchain_name=toolchain_name,
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+        )
+
+    def test_espidf_has_freertos(self):
+        result = self._render("espidf")
+        assert "## RTOS" in result
+        assert "FreeRTOS" in result
+        assert "xTaskCreate" in result
+        assert "xSemaphore" in result
+
+    def test_zephyr_has_zephyr_rtos(self):
+        result = self._render("zephyr")
+        assert "## RTOS" in result
+        assert "Zephyr RTOS" in result
+        assert "k_thread_create" in result
+        assert "k_sem_give" in result
+
+    def test_arduino_esp32_has_freertos(self):
+        result = self._render("arduino", board_name="ESP32")
+        assert "## RTOS" in result
+        assert "FreeRTOS" in result
+
+    def test_arduino_uno_no_rtos(self):
+        result = self._render("arduino", board_name="Arduino Uno")
+        assert "## RTOS" not in result
+
+    def test_cmake_native_no_rtos(self):
+        result = self._render("cmake-native")
+        assert "## RTOS" not in result
+
+    # -- FreeRTOS content depth --
+
+    def test_freertos_has_isr_rules(self):
+        result = self._render("espidf")
+        assert "FromISR" in result
+        assert "portYIELD_FROM_ISR" in result
+
+    def test_freertos_has_queues_and_mutexes(self):
+        result = self._render("espidf")
+        assert "xQueueCreate" in result
+        assert "xSemaphoreCreateMutex" in result
+
+    def test_freertos_has_timers(self):
+        result = self._render("espidf")
+        assert "xTimerCreate" in result
+
+    def test_freertos_has_pitfalls(self):
+        result = self._render("espidf")
+        assert "configCHECK_FOR_STACK_OVERFLOW" in result
+        assert "vTaskDelay" in result
+
+    # -- Zephyr content depth --
+
+    def test_zephyr_has_work_queues(self):
+        result = self._render("zephyr")
+        assert "k_work_submit" in result
+
+    def test_zephyr_has_logging(self):
+        result = self._render("zephyr")
+        assert "LOG_MODULE_REGISTER" in result
+        assert "LOG_INF" in result
+
+    def test_zephyr_has_kconfig(self):
+        result = self._render("zephyr")
+        assert "prj.conf" in result
+        assert "CONFIG_GPIO" in result
+
+    def test_zephyr_has_device_tree(self):
+        result = self._render("zephyr")
+        assert "DT_NODELABEL" in result
+        assert ".overlay" in result
+
+    def test_zephyr_has_isr_rules(self):
+        result = self._render("zephyr")
+        assert "k_sem_give" in result
+        assert "k_mutex_lock" in result
+
+    def test_zephyr_has_pitfalls(self):
+        result = self._render("zephyr")
+        assert "K_THREAD_STACK_DEFINE" in result
+        assert "CONFIG_THREAD_ANALYZER" in result
+
+    # -- Cross-contamination checks --
+
+    def test_freertos_no_zephyr_content(self):
+        result = self._render("espidf")
+        assert "k_thread_create" not in result
+
+    def test_zephyr_no_freertos_content(self):
+        result = self._render("zephyr")
+        assert "xTaskCreate" not in result
+
+    # -- ESP32 variant board names --
+
+    def test_arduino_esp32s3_has_freertos(self):
+        result = self._render("arduino", board_name="ESP32-S3")
+        assert "## RTOS" in result
+        assert "FreeRTOS" in result
+
+    def test_arduino_esp32c3_has_freertos(self):
+        result = self._render("arduino", board_name="ESP32-C3")
+        assert "## RTOS" in result
+        assert "FreeRTOS" in result
+
+    # -- Legacy render_template integration --
+
+    def test_render_template_esp32_has_rtos(self):
+        board = get_board("esp32")
+        result = render_template(board, port="/dev/ttyUSB0")
+        assert "## RTOS" in result
+
+
 class TestDebugToolSections:
     def test_saleae_section_when_detected(self):
         from edesto_dev.templates import render_generic_template

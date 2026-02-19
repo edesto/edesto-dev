@@ -57,7 +57,8 @@ This walks you through selecting your debug probe and target chip, generates an 
 2. A **debugging toolkit** — serial output reading, plus auto-detected support for logic analyzers, JTAG/SWD, and oscilloscopes
 3. **Board-specific** pin references, capabilities, and common pitfalls
 4. **Datasheet intelligence** — guidance on finding, reading, and citing datasheets and reference manuals, with board-family-specific tips for STM32, ESP32, and Nordic nRF documentation
-5. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
+5. **RTOS guidance** — context-aware FreeRTOS or Zephyr RTOS sections with task creation, synchronization primitives, ISR rules, and common concurrency pitfalls (appears automatically for ESP-IDF, Zephyr, and Arduino+ESP32 projects)
+6. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
 
 The debugging step is what makes this work. For example, your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. When you have additional debug tools installed, the agent can also drive them programmatically.
 
