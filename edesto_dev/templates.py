@@ -30,7 +30,7 @@ def render_generic_template(
         _generic_dev_loop(compile_command, upload_command, boot_delay),
         _debugging(port, baud_rate, boot_delay, tools),
         _troubleshooting(port, baud_rate, boot_delay),
-        _datasheets(),
+        _datasheets(board_name),
         _generic_board_info(board_name, board_info),
     ]
     return "\n".join(s for s in sections if s)
@@ -574,17 +574,97 @@ def _generic_board_info(board_name: str, board_info: dict) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _datasheets() -> str:
-    return """
+def _datasheets(board_name: str) -> str:
+    parts = ["""
 ## Datasheets
 
-Before writing or debugging firmware, check for datasheets in this project:
+Before writing or debugging firmware, check for datasheets in this project.
 
-1. **Check `datasheets/` folder first** — if it exists, read any relevant PDFs for pin configurations, register maps, timing specs, and electrical limits.
-2. **Check the project root and subfolders** for any other .pdf files that may be component datasheets or reference manuals.
+### Finding Datasheets
 
-When you find a datasheet:
-- Read it to understand the hardware you're interfacing with.
-- Use the correct register addresses, pin assignments, and protocol settings from the datasheet — not from memory or guesswork.
-- Pay attention to voltage levels, max current ratings, and timing requirements.
-- If a datasheet contradicts the pin reference below, the datasheet is correct."""
+1. **Check `datasheets/` folder first** — if it exists, read any relevant PDFs.
+2. **Check `docs/` and `hardware/` folders** for reference manuals, errata, and application notes.
+3. **Search the project root and all subfolders** for any `.pdf` files that may be component datasheets or reference manuals.
+
+### Extracting Key Information
+
+When implementing a peripheral driver or configuring hardware, extract and use:
+
+- **Register maps and bit-field definitions** — get the exact register addresses, field positions, and reset values. Never guess register addresses or bit positions.
+- **Pin configurations and alternate functions** — verify which GPIO pins support the peripheral you need and what alternate-function mapping is required.
+- **Timing diagrams and protocol specifications** — check setup/hold times, clock polarity/phase, and protocol framing.
+- **Electrical characteristics** — voltage levels, maximum current per pin, absolute maximum ratings, and recommended operating conditions.
+- **Initialization sequences** — many peripherals require a specific power-up or configuration sequence. Follow the datasheet order exactly.
+- **Clock tree and prescaler settings** — verify the peripheral clock source and required divider values for your target frequency.
+
+### Cross-Referencing Documents
+
+If the project contains multiple documents (e.g., a reference manual AND a datasheet AND an errata sheet), use all of them:
+
+- **Reference manual** — detailed register descriptions and peripheral operation.
+- **Datasheet** — pinout, electrical characteristics, package information, and ordering codes.
+- **Errata / silicon bugs** — known hardware issues that may require software workarounds. Always check for errata before finalizing a driver.
+- **Application notes** — recommended configurations and design patterns from the manufacturer.
+
+### Citing Datasheet Sections
+
+When writing code based on datasheet information, add comments referencing the source:
+
+```c
+// See RM0090 Section 8.3.3 — SPI CR1 register
+SPI1->CR1 = SPI_CR1_MSTR | SPI_CR1_BR_1;  // Master mode, fPCLK/8
+```
+
+This makes it easy to verify the code against the documentation later."""]
+
+    # Board-family-specific guidance
+    family_hint = _datasheet_family_hint(board_name)
+    if family_hint:
+        parts.append(family_hint)
+
+    return "\n".join(parts)
+
+
+def _datasheet_family_hint(board_name: str) -> str:
+    """Return datasheet navigation tips tailored to the board family."""
+    name = board_name.lower()
+
+    if "stm32" in name:
+        return """
+### STM32 Reference Manual Structure
+
+STM32 documentation is split across multiple documents:
+
+- **Reference Manual (RMxxxx)** — the primary document for register-level programming. Each peripheral has its own chapter with register maps, bit-field tables, and functional descriptions. Look for "Register Map" summary tables at the end of each peripheral chapter.
+- **Datasheet** — pinout tables (alternate function mapping), electrical specs, and package info. The "Alternate Function Mapping" table is essential for pin configuration.
+- **Errata Sheet (ESxxxx)** — lists silicon bugs by device revision. Check the revision printed on your chip against the errata.
+- **Programming Manual (PMxxxx)** — Cortex-M core details, instruction set, and system peripherals (NVIC, SysTick, MPU).
+
+Key sections to look for: "GPIO alternate function mapping", "RCC clock tree", "Peripheral register map summary"."""
+
+    if "esp32" in name or "esp8266" in name:
+        return """
+### ESP32 Technical Reference Structure
+
+ESP32 documentation is organized as:
+
+- **Technical Reference Manual (TRM)** — register-level details for each peripheral. Chapters are organized by peripheral (GPIO, SPI, I2C, etc.) with register description tables.
+- **Datasheet** — pin definitions, electrical characteristics, RF specifications, and module pinouts.
+- **Errata** — known issues per chip revision.
+- **ESP-IDF Programming Guide** — higher-level API documentation and configuration options (complements the TRM).
+
+Key sections to look for: "IO MUX and GPIO Matrix", "Register Summary" tables at the end of each peripheral chapter."""
+
+    if "nrf" in name or "nordic" in name:
+        return """
+### Nordic nRF Documentation Structure
+
+Nordic nRF documentation is organized as:
+
+- **Product Specification** — the primary register-level document. Combines what STM32 splits into reference manual and datasheet. Each peripheral chapter includes register tables, bit-field descriptions, and functional overview.
+- **Errata** — silicon anomalies listed by chip revision and severity. Check the "Scope" column to see if an anomaly affects your specific chip revision.
+- **Infocenter / DevZone** — application notes and community-verified workarounds.
+
+Key sections to look for: "Register overview" tables, "Instantiation" tables (base addresses per peripheral instance), "Pin configuration" chapter for GPIO setup."""
+
+    return ""

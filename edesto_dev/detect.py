@@ -7,7 +7,7 @@ from edesto_dev.toolchains import list_toolchains
 
 
 # Priority order for toolchain detection from project files.
-_DETECTION_PRIORITY = ["platformio", "espidf", "arduino", "micropython"]
+_DETECTION_PRIORITY = ["platformio", "espidf", "zephyr", "cmake-native", "arduino", "micropython"]
 
 
 def detect_toolchain(path: Path) -> Toolchain | None:

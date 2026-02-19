@@ -17,9 +17,9 @@ class TestArduinoToolchainBasics:
     def test_name(self, arduino):
         assert arduino.name == "arduino"
 
-    def test_list_boards_returns_12(self, arduino):
+    def test_list_boards_returns_17(self, arduino):
         boards = arduino.list_boards()
-        assert len(boards) == 12
+        assert len(boards) == 17
 
     def test_get_board_esp32(self, arduino):
         board = arduino.get_board("esp32")
@@ -40,6 +40,8 @@ class TestArduinoToolchainBasics:
             "esp32", "esp32s3", "esp32c3", "esp32c6", "esp8266",
             "arduino-uno", "arduino-nano", "arduino-mega",
             "rp2040", "teensy40", "teensy41", "stm32-nucleo",
+            "stm32f4-discovery", "stm32h7-nucleo", "stm32l4-nucleo",
+            "nrf52840", "nrf5340",
         ]
         slugs = [b.slug for b in arduino.list_boards()]
         for s in expected:

@@ -25,4 +25,6 @@ from edesto_dev.toolchains import arduino as _arduino  # noqa: F401, E402
 from edesto_dev.toolchains import platformio as _platformio  # noqa: F401, E402
 from edesto_dev.toolchains import espidf as _espidf  # noqa: F401, E402
 from edesto_dev.toolchains import micropython as _micropython  # noqa: F401, E402
+from edesto_dev.toolchains import zephyr as _zephyr  # noqa: F401, E402
+from edesto_dev.toolchains import cmake_native as _cmake_native  # noqa: F401, E402
 # Note: custom is NOT imported here — it's created on demand from edesto.toml

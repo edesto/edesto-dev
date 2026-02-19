@@ -56,7 +56,8 @@ This walks you through selecting your debug probe and target chip, generates an 
 1. **Compile** and **flash** commands for your specific toolchain
 2. A **debugging toolkit** — serial output reading, plus auto-detected support for logic analyzers, JTAG/SWD, and oscilloscopes
 3. **Board-specific** pin references, capabilities, and common pitfalls
-4. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
+4. **Datasheet intelligence** — guidance on finding, reading, and citing datasheets and reference manuals, with board-family-specific tips for STM32, ESP32, and Nordic nRF documentation
+5. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
 
 The debugging step is what makes this work. For example, your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. When you have additional debug tools installed, the agent can also drive them programmatically.
 
@@ -67,6 +68,8 @@ The debugging step is what makes this work. For example, your firmware prints st
 | Arduino | `.ino` files | `arduino-cli compile`, `arduino-cli upload` |
 | PlatformIO | `platformio.ini` | `pio run`, `pio run --target upload` |
 | ESP-IDF | `CMakeLists.txt` + `sdkconfig` | `idf.py build`, `idf.py flash` |
+| Zephyr RTOS | `prj.conf`, `west.yml`, or CMake with `find_package(Zephyr` | `west build`, `west flash` |
+| CMake/Make (bare-metal) | `Makefile` with cross-compiler or `CMakeLists.txt` with toolchain file | `cmake --build build`, OpenOCD flash |
 | MicroPython | `boot.py` / `main.py` | `mpremote connect`, `mpremote cp` |
 | Custom | `edesto.toml` | Your commands |
 
@@ -74,22 +77,27 @@ If edesto can't detect your toolchain, it prompts you to enter compile/upload co
 
 ## Supported Boards
 
-| Slug | Board |
-|------|-------|
-| `esp32` | ESP32 |
-| `esp32s3` | ESP32-S3 |
-| `esp32c3` | ESP32-C3 |
-| `esp32c6` | ESP32-C6 |
-| `esp8266` | ESP8266 |
-| `arduino-uno` | Arduino Uno |
-| `arduino-nano` | Arduino Nano |
-| `arduino-mega` | Arduino Mega 2560 |
-| `rp2040` | Raspberry Pi Pico |
-| `teensy40` | Teensy 4.0 |
-| `teensy41` | Teensy 4.1 |
-| `stm32-nucleo` | STM32 Nucleo-64 |
+| Slug | Board | Key Features |
+|------|-------|-------------|
+| `esp32` | ESP32 | WiFi, Bluetooth, BLE |
+| `esp32s3` | ESP32-S3 | WiFi, BLE, USB native |
+| `esp32c3` | ESP32-C3 | WiFi, BLE, RISC-V |
+| `esp32c6` | ESP32-C6 | WiFi 6, BLE, Zigbee/Thread |
+| `esp8266` | ESP8266 | WiFi |
+| `arduino-uno` | Arduino Uno | AVR, 32KB flash |
+| `arduino-nano` | Arduino Nano | AVR, compact |
+| `arduino-mega` | Arduino Mega 2560 | AVR, 256KB flash, 4 serial |
+| `rp2040` | Raspberry Pi Pico | Dual-core, PIO, USB |
+| `teensy40` | Teensy 4.0 | 600MHz Cortex-M7, USB |
+| `teensy41` | Teensy 4.1 | 600MHz, Ethernet, SD card |
+| `stm32-nucleo` | STM32 Nucleo-64 | STM32, Arduino headers |
+| `stm32f4-discovery` | STM32F4 Discovery | STM32F407, USB OTG, accelerometer, DAC |
+| `stm32h7-nucleo` | STM32H7 Nucleo-144 | Dual-core 480MHz, Ethernet |
+| `stm32l4-nucleo` | STM32L4 Nucleo-64 | Ultra-low-power, DAC |
+| `nrf52840` | Adafruit Feather nRF52840 | BLE 5.0, USB, NFC, QSPI |
+| `nrf5340` | nRF5340 DK | Dual-core, BLE 5.3, TrustZone |
 
-Any board works with PlatformIO, ESP-IDF, MicroPython, or a custom toolchain — the table above is for Arduino auto-detection. Run `edesto boards` to see the full list.
+Any board works with PlatformIO, ESP-IDF, Zephyr, MicroPython, or a custom toolchain — the table above is for auto-detection with board-specific pin references and pitfalls. Run `edesto boards` to see the full list.
 
 ## Debug Tools (Optional)
 
@@ -129,7 +137,7 @@ Three example projects in `examples/`, each with an intentional bug for your AI 
 
 - A supported board connected via USB or JTAG debugger
 - Python 3.10+
-- Your toolchain's CLI installed (e.g., `arduino-cli`, `pio`, `idf.py`, `mpremote`)
+- Your toolchain's CLI installed (e.g., `arduino-cli`, `pio`, `idf.py`, `west`, `arm-none-eabi-gcc`, `mpremote`)
 - For JTAG flashing: `openocd` on PATH
 - Optional: debug tools (`logic2-automation`, `openocd`, `pyvisa`) for advanced debugging
 
