@@ -215,6 +215,9 @@ Use the right tool for the problem:
     if "scope" in debug_tools:
         parts.append(_scope_section())
 
+    # edesto CLI tools reference
+    parts.append(_edesto_commands_section())
+
     return "\n".join(s for s in parts if s)
 
 
@@ -1332,3 +1335,44 @@ Use `.overlay` files in your project to customize pin assignments without modify
 - **Cooperative vs preemptive** — cooperative threads (negative priority) are never preempted. If your thread never yields, no other thread of equal or lower priority will run.
 - **Device tree mismatches** — if `DT_NODELABEL()` returns a build error, the label doesn't exist in the device tree. Check the board's `.dts` file or add an `.overlay`.
 - **Forgetting `K_FOREVER` vs `K_NO_WAIT`** — `K_FOREVER` blocks until available, `K_NO_WAIT` returns immediately with an error if unavailable. Choose deliberately."""
+
+
+def _edesto_commands_section() -> str:
+    """Generate the edesto CLI tools reference for SKILLS.md."""
+    return """
+### edesto CLI Tools
+
+Use these commands instead of writing Python serial scripts:
+
+| Command | Description |
+|---|---|
+| `edesto serial read` | Read serial output (auto-parses tags, logs to `.edesto/`) |
+| `edesto serial send <CMD>` | Send a command and read response (auto-detects markers) |
+| `edesto serial monitor` | Stream serial output continuously |
+| `edesto serial ports` | List available serial ports with board labels |
+| `edesto debug scan` | Scan source files for logging APIs, markers, ISR zones |
+| `edesto debug instrument <FILE:LINE> --expr <EXPR> [--fmt <FMT>]` | Insert a debug print at a specific line |
+| `edesto debug instrument --function <NAME>` | Add entry/exit logging to a function |
+| `edesto debug instrument --gpio <FILE:LINE>` | Insert GPIO toggle for timing measurement |
+| `edesto debug clean [--dry-run]` | Remove all instrumentation (EDESTO_TEMP_DEBUG markers) |
+| `edesto debug status [--json]` | Show diagnostic snapshot (log analysis, tools, device state) |
+| `edesto debug reset` | Clear all debug state files |
+| `edesto config <KEY> <VALUE>` | Set a config value in edesto.toml |
+| `edesto config <KEY>` | Get a config value |
+| `edesto config --list` | Show all config values |
+
+**Serial command options:** `--port`, `--baud` (override edesto.toml), `--json` (structured output), `--duration`, `--until` (stop on marker).
+
+**Instrumentation safety rules:**
+- All inserted lines are marked with `// EDESTO_TEMP_DEBUG` for guaranteed cleanup
+- Instrumentation is refused in ISR/danger zones (use `--gpio` for timing in ISRs, or `--force` to override)
+- `edesto debug clean` removes ALL instrumented lines — always run before committing
+- Configure debug GPIO pin: `edesto config debug.gpio <PIN>`
+
+**Debug workflow:**
+1. `edesto debug scan` — analyze the project (auto-runs on first `serial read`)
+2. `edesto serial read` / `edesto serial send <CMD>` — observe behavior
+3. `edesto debug instrument ...` — add targeted debug output if needed
+4. Compile and flash, then `edesto serial read` to check
+5. `edesto debug clean` — remove instrumentation when done
+6. `edesto debug status` — get a structured diagnostic snapshot for complex issues"""

@@ -619,3 +619,33 @@ class TestInitJtagIntegration:
             result = runner.invoke(main, ["init", "--upload", "jtag"])
             assert result.exit_code != 0
             assert "board" in result.output.lower()
+
+
+class TestInitGitignore:
+    def test_init_creates_gitignore_with_edesto(self, runner):
+        """init creates .gitignore with .edesto/ if no .gitignore exists."""
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            assert result.exit_code == 0
+            gitignore = Path(".gitignore")
+            assert gitignore.exists()
+            assert ".edesto/" in gitignore.read_text()
+
+    def test_init_appends_edesto_to_existing_gitignore(self, runner):
+        """init appends .edesto/ to existing .gitignore."""
+        with runner.isolated_filesystem():
+            Path(".gitignore").write_text("*.pyc\n__pycache__/\n")
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            assert result.exit_code == 0
+            content = Path(".gitignore").read_text()
+            assert "*.pyc" in content
+            assert ".edesto/" in content
+
+    def test_init_no_duplicate_edesto_in_gitignore(self, runner):
+        """init doesn't add .edesto/ if already present."""
+        with runner.isolated_filesystem():
+            Path(".gitignore").write_text("*.pyc\n.edesto/\n")
+            result = runner.invoke(main, ["init", "--board", "esp32", "--port", "/dev/ttyUSB0"])
+            assert result.exit_code == 0
+            content = Path(".gitignore").read_text()
+            assert content.count(".edesto/") == 1

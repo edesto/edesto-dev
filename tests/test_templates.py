@@ -946,3 +946,52 @@ class TestSerialMultiStepWorkflows:
     def test_no_workflows_when_no_port(self):
         result = self._render(port=None, debug_tools=["saleae", "scope", "openocd"])
         assert "Multi-Step Validation Workflows" not in result
+
+
+class TestEdestoCommandsSection:
+    def _render(self):
+        from edesto_dev.templates import render_generic_template
+        return render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=[],
+        )
+
+    def test_has_edesto_commands_section(self):
+        result = self._render()
+        assert "### edesto CLI Tools" in result
+
+    def test_edesto_commands_has_serial_read(self):
+        result = self._render()
+        assert "edesto serial read" in result
+
+    def test_edesto_commands_has_serial_send(self):
+        result = self._render()
+        assert "edesto serial send" in result
+
+    def test_edesto_commands_has_debug_scan(self):
+        result = self._render()
+        assert "edesto debug scan" in result
+
+    def test_edesto_commands_has_debug_instrument(self):
+        result = self._render()
+        assert "edesto debug instrument" in result
+
+    def test_edesto_commands_has_debug_clean(self):
+        result = self._render()
+        assert "edesto debug clean" in result
+
+    def test_edesto_commands_has_safety_rules(self):
+        result = self._render()
+        assert "EDESTO_TEMP_DEBUG" in result
+
+    def test_edesto_commands_has_debug_workflow(self):
+        result = self._render()
+        assert "Debug workflow" in result

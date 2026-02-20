@@ -54,13 +54,13 @@ This walks you through selecting your debug probe and target chip, generates an 
 `edesto init` detects your project and generates a `SKILLS.md` (plus copies as `CLAUDE.md`, `.cursorrules`, and `AGENTS.md`) that gives your AI agent:
 
 1. **Compile** and **flash** commands for your specific toolchain
-2. A **debugging toolkit** — bidirectional serial communication (read output and send commands), plus auto-detected support for logic analyzers, JTAG/SWD, and oscilloscopes
+2. A **debugging toolkit** — bidirectional serial communication (read output and send commands), safe code instrumentation, project-aware debug scanning, plus auto-detected support for logic analyzers, JTAG/SWD, and oscilloscopes
 3. **Board-specific** pin references, capabilities, and common pitfalls
 4. **Datasheet intelligence** — guidance on finding, reading, and citing datasheets and reference manuals, with board-family-specific tips for STM32, ESP32, and Nordic nRF documentation
 5. **RTOS guidance** — context-aware FreeRTOS or Zephyr RTOS sections with task creation, synchronization primitives, ISR rules, and common concurrency pitfalls (appears automatically for ESP-IDF, Zephyr, and Arduino+ESP32 projects)
 6. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
 
-The debugging step is what makes this work. For example, your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. The agent can also send commands to the board to trigger specific behavior (sensor reads, PWM, peripheral operations) and validate the results. When you have additional debug tools installed, the agent combines serial commands with logic analyzers, oscilloscopes, or JTAG/GDB for end-to-end validation workflows.
+The debugging step is what makes this work. The `edesto serial` and `edesto debug` commands give the agent structured access to your hardware. `edesto debug scan` analyzes your source code to detect logging APIs, boot markers, danger zones (ISRs), and serial commands. The agent uses `edesto serial read` and `edesto serial send` for bidirectional communication with the board, and `edesto debug instrument` for safe code instrumentation with guaranteed cleanup (`edesto debug clean` removes all instrumented lines). For example, your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. When you have additional debug tools installed, the agent combines serial commands with logic analyzers, oscilloscopes, or JTAG/GDB for end-to-end validation workflows.
 
 ## Supported Toolchains
 
@@ -116,6 +116,7 @@ If a tool isn't installed, its section is simply omitted — the agent won't try
 ## Commands
 
 ```bash
+# Setup
 edesto init                                     # Auto-detect everything
 edesto init --board esp32                       # Specify board, auto-detect port
 edesto init --board esp32 --port /dev/ttyUSB0   # Fully manual
@@ -124,6 +125,30 @@ edesto init --toolchain platformio              # Force a specific toolchain
 edesto boards                                   # List supported boards
 edesto boards --toolchain arduino               # Filter by toolchain
 edesto doctor                                   # Check your environment
+
+# Serial communication
+edesto serial ports                             # List available serial ports
+edesto serial read --duration 10                # Read serial output for 10 seconds
+edesto serial read --until "[READY]"            # Read until marker appears
+edesto serial send "status"                     # Send command, read response
+edesto serial send "reboot" --until "[READY]"   # Send command, wait for marker
+edesto serial monitor                           # Stream serial output continuously
+
+# Debug tools
+edesto debug scan                               # Scan project for debug patterns
+edesto debug instrument src/main.c:42 --expr val --fmt "%d"  # Insert debug print
+edesto debug instrument --function my_func      # Add entry/exit logging
+edesto debug instrument --gpio src/main.c:42    # GPIO toggle for timing
+edesto debug clean                              # Remove all instrumentation
+edesto debug clean --dry-run                    # Preview what would be removed
+edesto debug status                             # Show diagnostic snapshot
+edesto debug status --json                      # Machine-readable status
+edesto debug reset                              # Clear all debug state
+
+# Configuration
+edesto config debug.gpio 25                     # Set debug GPIO pin
+edesto config serial.baud_rate                  # Get a config value
+edesto config --list                            # Show all config
 ```
 
 ## Examples
