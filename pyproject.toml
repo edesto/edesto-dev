@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "edesto-dev"
-version = "0.8.0"
+version = "0.9.0"
 description = "Teach AI coding agents to compile, flash, and validate firmware on real hardware. One command to bridge any agent and any board."
 readme = "README.md"
 license = "MIT"
