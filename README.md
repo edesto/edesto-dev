@@ -54,13 +54,13 @@ This walks you through selecting your debug probe and target chip, generates an 
 `edesto init` detects your project and generates a `SKILLS.md` (plus copies as `CLAUDE.md`, `.cursorrules`, and `AGENTS.md`) that gives your AI agent:
 
 1. **Compile** and **flash** commands for your specific toolchain
-2. A **debugging toolkit** — serial output reading, plus auto-detected support for logic analyzers, JTAG/SWD, and oscilloscopes
+2. A **debugging toolkit** — bidirectional serial communication (read output and send commands), plus auto-detected support for logic analyzers, JTAG/SWD, and oscilloscopes
 3. **Board-specific** pin references, capabilities, and common pitfalls
 4. **Datasheet intelligence** — guidance on finding, reading, and citing datasheets and reference manuals, with board-family-specific tips for STM32, ESP32, and Nordic nRF documentation
 5. **RTOS guidance** — context-aware FreeRTOS or Zephyr RTOS sections with task creation, synchronization primitives, ISR rules, and common concurrency pitfalls (appears automatically for ESP-IDF, Zephyr, and Arduino+ESP32 projects)
 6. **Troubleshooting** guidance for common failures (port busy, baud mismatch, upload timeout)
 
-The debugging step is what makes this work. For example, your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. When you have additional debug tools installed, the agent can also drive them programmatically.
+The debugging step is what makes this work. For example, your firmware prints structured serial output (`[READY]`, `[ERROR]`, `[SENSOR] key=value`) and the agent reads it to verify its own changes on real hardware. The agent can also send commands to the board to trigger specific behavior (sensor reads, PWM, peripheral operations) and validate the results. When you have additional debug tools installed, the agent combines serial commands with logic analyzers, oscilloscopes, or JTAG/GDB for end-to-end validation workflows.
 
 ## Supported Toolchains
 
@@ -106,7 +106,7 @@ edesto auto-detects debug tools on your machine and includes them in the generat
 
 | Tool | What it checks | Detection |
 |------|---------------|-----------|
-| **Serial output** | Application behavior (always included) | `pyserial` |
+| **Serial** | Bidirectional communication — read output and send commands (always included) | `pyserial` |
 | **Logic analyzer** | SPI/I2C/UART protocol timing and bus decoding | [Saleae Logic 2](https://www.saleae.com/) + `logic2-automation` Python package |
 | **JTAG/SWD** | CPU state, crashes, HardFaults, registers, memory | `openocd` on PATH |
 | **Oscilloscope** | Voltage levels, PWM frequency/duty, rise times | SCPI scope + `pyvisa` Python package |
