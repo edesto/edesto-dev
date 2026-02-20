@@ -67,7 +67,7 @@ class TestRenderTemplate:
     def test_has_serial_validation(self):
         board = get_board("esp32")
         result = render_template(board, port="/dev/ttyUSB0")
-        assert "### Serial Output" in result
+        assert "### Serial Communication" in result
         assert "serial.Serial" in result
         assert "[READY]" in result
         assert "115200" in result
@@ -118,7 +118,7 @@ class TestRenderTemplate:
         board = get_board("esp32")
         result = render_template(board, port="/dev/ttyUSB0")
         assert "## Debugging" in result
-        assert "### Serial Output" in result
+        assert "### Serial Communication" in result
 
 
 class TestAllBoardsRender:
@@ -591,7 +591,7 @@ class TestJtagTemplateRendering:
             debug_tools=["openocd"],
             jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
         )
-        assert "### Serial Output" not in result
+        assert "### Serial Communication" not in result
 
     def test_jtag_with_serial_port_has_serial_section(self):
         from edesto_dev.templates import render_generic_template
@@ -609,7 +609,7 @@ class TestJtagTemplateRendering:
             debug_tools=["openocd"],
             jtag_config=JtagConfig(interface="stlink", target="stm32f4x"),
         )
-        assert "### Serial Output" in result
+        assert "### Serial Communication" in result
 
     def test_jtag_always_has_openocd_in_debug_tools(self):
         from edesto_dev.templates import render_generic_template
@@ -662,4 +662,287 @@ class TestJtagTemplateRendering:
             debug_tools=[],
         )
         assert "connected via USB" in result
-        assert "### Serial Output" in result
+        assert "### Serial Communication" in result
+
+
+class TestGdbBinaryForBoard:
+    def test_esp32_xtensa(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("ESP32") == "xtensa-esp-elf-gdb"
+
+    def test_esp32s3_xtensa(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("ESP32-S3") == "xtensa-esp-elf-gdb"
+
+    def test_esp32c3_riscv(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("ESP32-C3") == "riscv32-esp-elf-gdb"
+
+    def test_esp32c6_riscv(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("ESP32-C6") == "riscv32-esp-elf-gdb"
+
+    def test_esp32h2_riscv(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("ESP32-H2") == "riscv32-esp-elf-gdb"
+
+    def test_stm32_arm(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("STM32 Nucleo-64") == "arm-none-eabi-gdb"
+
+    def test_nrf52_arm(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("nRF52840") == "arm-none-eabi-gdb"
+
+    def test_rp2040_arm(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("RP2040") == "arm-none-eabi-gdb"
+
+    def test_teensy_arm(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("Teensy 4.1") == "arm-none-eabi-gdb"
+
+    def test_arduino_uno_arm(self):
+        from edesto_dev.templates import _gdb_binary_for_board
+        assert _gdb_binary_for_board("Arduino Uno") == "arm-none-eabi-gdb"
+
+
+class TestGdbSection:
+    def _render(self, board_name="STM32 Nucleo-64", debug_tools=None, jtag_config=None):
+        from edesto_dev.templates import render_generic_template
+        from edesto_dev.toolchain import JtagConfig
+        if jtag_config is None and debug_tools and "openocd" in debug_tools:
+            jtag_config = JtagConfig(interface="stlink", target="stm32f4x")
+        return render_generic_template(
+            board_name=board_name,
+            toolchain_name="Arduino",
+            port=None,
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=debug_tools or [],
+            jtag_config=jtag_config,
+        )
+
+    def test_present_when_openocd_detected(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "### GDB: Source-Level Debugging" in result
+
+    def test_absent_when_no_openocd(self):
+        result = self._render(debug_tools=[])
+        assert "### GDB" not in result
+
+    def test_correct_gdb_binary_stm32(self):
+        result = self._render(board_name="STM32 Nucleo-64", debug_tools=["openocd"])
+        assert "arm-none-eabi-gdb" in result
+
+    def test_correct_gdb_binary_esp32(self):
+        from edesto_dev.toolchain import JtagConfig
+        result = self._render(
+            board_name="ESP32",
+            debug_tools=["openocd"],
+            jtag_config=JtagConfig(interface="esp-builtin", target="esp32"),
+        )
+        assert "xtensa-esp-elf-gdb" in result
+
+    def test_correct_gdb_binary_esp32c3(self):
+        from edesto_dev.toolchain import JtagConfig
+        result = self._render(
+            board_name="ESP32-C3",
+            debug_tools=["openocd"],
+            jtag_config=JtagConfig(interface="esp-builtin", target="esp32c3"),
+        )
+        assert "riscv32-esp-elf-gdb" in result
+
+    def test_has_batch_mode(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "-batch" in result
+
+    def test_has_script_mode(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "-x" in result
+
+    def test_has_subprocess_example(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "subprocess.Popen" in result or "subprocess" in result
+
+    def test_has_crash_investigation_workflow(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "Crash Investigation" in result
+
+    def test_has_variable_tracing_workflow(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "Variable" in result and "Tracing" in result
+
+    def test_has_peripheral_workflow(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "Peripheral" in result and "Not Responding" in result
+
+    def test_has_watchpoint_workflow(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "Watchpoint" in result
+
+    def test_has_iterative_debugging(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "Iterative Debugging" in result or "iterative" in result.lower()
+
+    def test_has_decision_tree(self):
+        result = self._render(debug_tools=["openocd"])
+        # Should have chaining guidance
+        assert "Chain" in result or "chain" in result
+
+    def test_connects_to_port_3333(self):
+        result = self._render(debug_tools=["openocd"])
+        assert ":3333" in result
+
+    def test_has_essential_commands(self):
+        result = self._render(debug_tools=["openocd"])
+        for cmd in ["break", "next", "step", "finish", "bt", "print", "info locals"]:
+            assert cmd in result, f"Missing essential GDB command: {cmd}"
+
+    def test_has_gdb_in_tool_guide(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "GDB" in result
+
+
+class TestOpenocdAutoStart:
+    def _render(self, jtag_config=None, debug_tools=None):
+        from edesto_dev.templates import render_generic_template
+        return render_generic_template(
+            board_name="STM32 Nucleo-64",
+            toolchain_name="Arduino",
+            port=None,
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=debug_tools or ["openocd"],
+            jtag_config=jtag_config,
+        )
+
+    def test_actual_interface_config_when_jtag_config(self):
+        from edesto_dev.toolchain import JtagConfig
+        result = self._render(jtag_config=JtagConfig(interface="stlink", target="stm32f4x"))
+        assert "interface/stlink.cfg" in result
+        assert "target/stm32f4x.cfg" in result
+
+    def test_ensure_openocd_snippet_present(self):
+        from edesto_dev.toolchain import JtagConfig
+        result = self._render(jtag_config=JtagConfig(interface="stlink", target="stm32f4x"))
+        assert "ensure_openocd" in result
+
+    def test_generic_placeholder_when_no_jtag_config(self):
+        result = self._render(jtag_config=None)
+        # Should use generic placeholder values
+        assert "interface/<probe>.cfg" in result or "interface/cmsis-dap.cfg" in result
+        assert "ensure_openocd" not in result
+
+    def test_jlink_interface_appears(self):
+        from edesto_dev.toolchain import JtagConfig
+        result = self._render(jtag_config=JtagConfig(interface="jlink", target="nrf52"))
+        assert "interface/jlink.cfg" in result
+        assert "target/nrf52.cfg" in result
+
+    def test_openocd_heading_renamed(self):
+        from edesto_dev.toolchain import JtagConfig
+        result = self._render(jtag_config=JtagConfig(interface="stlink", target="stm32f4x"))
+        assert "### JTAG/SWD: Direct Memory & Register Access" in result
+
+
+class TestSerialCommandSending:
+    def _render(self, debug_tools=None):
+        from edesto_dev.templates import render_generic_template
+        return render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port="/dev/ttyUSB0",
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=debug_tools or [],
+        )
+
+    def test_has_sending_commands_section(self):
+        result = self._render()
+        assert "Sending Commands" in result
+
+    def test_has_serial_write(self):
+        result = self._render()
+        assert "ser.write" in result
+
+    def test_has_serial_flush(self):
+        result = self._render()
+        assert "ser.flush" in result
+
+    def test_has_command_conventions(self):
+        result = self._render()
+        assert "[CMD]" in result
+        assert "[OK]" in result
+
+    def test_read_snippet_still_present(self):
+        result = self._render()
+        assert "read_serial.py" in result
+        assert "ser.readline" in result
+
+    def test_bidirectional_tool_guide(self):
+        result = self._render()
+        assert "send commands" in result
+
+
+class TestSerialMultiStepWorkflows:
+    def _render(self, port="/dev/ttyUSB0", debug_tools=None):
+        from edesto_dev.templates import render_generic_template
+        return render_generic_template(
+            board_name="ESP32",
+            toolchain_name="arduino",
+            port=port,
+            baud_rate=115200,
+            compile_command="compile",
+            upload_command="upload",
+            monitor_command=None,
+            boot_delay=3,
+            board_info={},
+            debug_tools=debug_tools or [],
+        )
+
+    def test_no_workflows_when_no_debug_tools(self):
+        result = self._render(debug_tools=[])
+        assert "Multi-Step Validation Workflows" not in result
+
+    def test_saleae_workflow_present(self):
+        result = self._render(debug_tools=["saleae"])
+        assert "Serial + Logic Analyzer" in result
+
+    def test_scope_workflow_present(self):
+        result = self._render(debug_tools=["scope"])
+        assert "Serial + Oscilloscope" in result
+
+    def test_openocd_workflow_present(self):
+        result = self._render(debug_tools=["openocd"])
+        assert "Serial + JTAG" in result
+
+    def test_saleae_workflow_absent_without_saleae(self):
+        result = self._render(debug_tools=["scope"])
+        assert "Serial + Logic Analyzer" not in result
+
+    def test_scope_workflow_absent_without_scope(self):
+        result = self._render(debug_tools=["saleae"])
+        assert "Serial + Oscilloscope" not in result
+
+    def test_all_tools_all_workflows(self):
+        result = self._render(debug_tools=["saleae", "scope", "openocd"])
+        assert "Serial + Logic Analyzer" in result
+        assert "Serial + Oscilloscope" in result
+        assert "Serial + JTAG" in result
+
+    def test_no_workflows_when_no_port(self):
+        result = self._render(port=None, debug_tools=["saleae", "scope", "openocd"])
+        assert "Multi-Step Validation Workflows" not in result

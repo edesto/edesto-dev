@@ -28,7 +28,7 @@ def render_generic_template(
         _setup(setup_info),
         _generic_commands(compile_command, upload_command, monitor_command),
         _generic_dev_loop(compile_command, upload_command, boot_delay),
-        _debugging(port, baud_rate, boot_delay, tools),
+        _debugging(port, baud_rate, boot_delay, tools, board_name=board_name, jtag_config=jtag_config),
         _troubleshooting(port, baud_rate, boot_delay),
         _datasheets(board_name),
         _rtos_guidance(toolchain_name, board_name),
@@ -170,14 +170,14 @@ Every time you change code, follow this exact sequence:
 7. If validation fails, go back to step 1 and iterate."""
 
 
-def _debugging(port: str | None, baud_rate: int, boot_delay: int, debug_tools: list[str]) -> str:
+def _debugging(port: str | None, baud_rate: int, boot_delay: int, debug_tools: list[str], board_name: str = "", jtag_config: JtagConfig | None = None) -> str:
     parts = []
 
     # Header with tool guide
     tool_guide = []
     if port:
         tool_guide.append(
-            "- **Serial output** — application-level behavior (sensor readings, state machines, error messages)"
+            "- **Serial** — bidirectional communication: read application output and send commands to trigger firmware behavior"
         )
     if "saleae" in debug_tools:
         tool_guide.append(
@@ -185,7 +185,10 @@ def _debugging(port: str | None, baud_rate: int, boot_delay: int, debug_tools: l
         )
     if "openocd" in debug_tools:
         tool_guide.append(
-            "- **JTAG/SWD** — CPU-level issues (crashes, HardFaults, register/memory state, breakpoints)"
+            "- **JTAG/SWD (TCL RPC)** — CPU-level issues (crashes, HardFaults, register/memory state via raw addresses)"
+        )
+        tool_guide.append(
+            "- **GDB** — source-level debugging (symbolic breakpoints, backtraces with function names, variable inspection, stepping)"
         )
     if "scope" in debug_tools:
         tool_guide.append(
@@ -201,22 +204,23 @@ Use the right tool for the problem:
 
     # Serial subsection (only when port is available)
     if port:
-        parts.append(_serial_section(port, baud_rate, boot_delay))
+        parts.append(_serial_section(port, baud_rate, boot_delay, debug_tools=debug_tools))
 
-    # Tool subsections (conditional) — stubs for now
+    # Tool subsections (conditional)
     if "saleae" in debug_tools:
         parts.append(_saleae_section())
     if "openocd" in debug_tools:
-        parts.append(_openocd_section())
+        parts.append(_openocd_section(jtag_config))
+        parts.append(_gdb_section(board_name, jtag_config))
     if "scope" in debug_tools:
         parts.append(_scope_section())
 
     return "\n".join(s for s in parts if s)
 
 
-def _serial_section(port: str, baud_rate: int, boot_delay: int) -> str:
-    return f"""
-### Serial Output
+def _serial_section(port: str, baud_rate: int, boot_delay: int, debug_tools: list[str] | None = None) -> str:
+    parts = [f"""
+### Serial Communication
 
 This is how you verify your code is actually working on the device. Always validate after flashing.
 
@@ -247,13 +251,107 @@ ser.close()
 
 Save this as `read_serial.py` and run with `python read_serial.py`. Parse the output to check if your firmware is behaving correctly. Adapt the timeout and read duration as needed — some operations (WiFi connect, sensor warm-up) take longer than 10 seconds.
 
+#### Sending Commands
+
+Use this Python snippet to send commands to the board and read the response:
+
+```python
+import serial, time, sys
+
+try:
+    ser = serial.Serial('{port}', {baud_rate}, timeout=1)
+except serial.SerialException as err:
+    print("Could not open {port}: " + str(err))
+    sys.exit(1)
+
+time.sleep({boot_delay})  # Wait for boot
+
+# Wait for [READY] before sending
+start = time.time()
+while time.time() - start < 10:
+    line = ser.readline().decode('utf-8', errors='ignore').strip()
+    if line == '[READY]':
+        break
+else:
+    print("Timed out waiting for [READY]")
+    ser.close()
+    sys.exit(1)
+
+# Send a command (newline-terminated)
+command = "read_sensor"
+ser.write((command + "\\n").encode())
+ser.flush()
+
+# Read response until [DONE] or timeout
+lines = []
+start = time.time()
+while time.time() - start < 10:
+    line = ser.readline().decode('utf-8', errors='ignore').strip()
+    if line:
+        lines.append(line)
+        print(line)
+        if line == '[DONE]':
+            break
+ser.close()
+```
+
+Save this as `send_command.py` and run with `python send_command.py`. Adapt the command, timeout, and read duration as needed.
+
 **Important serial conventions for your firmware:**
 - Configure your serial port at {baud_rate} baud
 - Send complete lines (newline-terminated) so each message can be parsed
 - Print `[READY]` when initialization is complete
 - Print `[ERROR] <description>` for any error conditions
 - Use tags for structured output: `[SENSOR] temp=23.4`, `[STATUS] running`
-- Print `[DONE]` when a test sequence finishes (allows the reader to exit early)"""
+- Print `[DONE]` when a test sequence finishes (allows the reader to exit early)
+- Echo received commands with `[CMD] <command>` so the agent can confirm what was received
+- Print `[OK]` after successful command execution
+- Command flow example: send `read_sensor\\n` → firmware prints `[CMD] read_sensor`, `[SENSOR] temp=23.4`, `[OK]`, `[DONE]`"""]
+
+    # Multi-step validation workflows (only when other debug tools are available)
+    tools = debug_tools or []
+    workflow_parts = []
+    if "saleae" in tools:
+        workflow_parts.append("""
+##### Serial + Logic Analyzer
+
+Send a command via serial to trigger a peripheral operation, then capture the bus traffic with the logic analyzer to verify the protocol-level behavior:
+
+1. Start a Saleae capture (see Logic Analyzer section)
+2. Send the command via serial (e.g., `spi_write\\n`)
+3. Wait for `[DONE]` on serial
+4. Stop the capture and export decoded protocol data
+5. Compare the decoded bus traffic against expected values""")
+    if "scope" in tools:
+        workflow_parts.append("""
+##### Serial + Oscilloscope
+
+Send a command via serial to trigger an electrical output, then measure it with the oscilloscope:
+
+1. Configure the oscilloscope trigger and timebase (see Oscilloscope section)
+2. Send the command via serial (e.g., `start_pwm\\n`)
+3. Wait for `[OK]` on serial
+4. Read oscilloscope measurements (frequency, duty cycle, Vpp)
+5. Compare against expected values from the firmware configuration""")
+    if "openocd" in tools:
+        workflow_parts.append("""
+##### Serial + JTAG/GDB
+
+Send a command via serial and use GDB to inspect CPU state when something goes wrong:
+
+1. Set a GDB breakpoint at the function under test
+2. Send the command via serial (e.g., `init_peripheral\\n`)
+3. When the breakpoint hits, inspect variables and registers
+4. Continue execution and check serial output for `[OK]` or `[ERROR]`""")
+
+    if workflow_parts:
+        parts.append("""
+#### Multi-Step Validation Workflows
+
+Combine serial commands with other debug tools for end-to-end validation:""")
+        parts.extend(workflow_parts)
+
+    return "\n".join(parts)
 
 
 def _saleae_section() -> str:
@@ -330,19 +428,57 @@ Adapt the channel numbers, sample rate, and protocol analyzer to match your wiri
 If the capture shows no transitions or unexpected data, ask the user to verify that the logic analyzer probes are connected to the correct pins and that the ground clip is attached."""
 
 
-def _openocd_section() -> str:
-    return """
-### JTAG/SWD
+def _openocd_section(jtag_config: JtagConfig | None = None) -> str:
+    if jtag_config:
+        iface = jtag_config.interface
+        target = jtag_config.target
+        start_block = f"""
+**Start OpenOCD** (run in a separate terminal — it stays running as a server):
 
-Use OpenOCD to inspect CPU state, read registers and memory, diagnose crashes, and flash firmware. This is the right tool when the board crashes, stops responding, hits a HardFault, or you need to inspect peripheral registers directly.
+```bash
+openocd -f interface/{iface}.cfg -f target/{target}.cfg
+```
 
+**Auto-start from Python** — use this snippet to ensure OpenOCD is running before connecting:
+
+```python
+import subprocess, socket, time
+
+def ensure_openocd(interface="{iface}", target="{target}"):
+    \"\"\"Start OpenOCD if not already running.\"\"\"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        s.connect(("localhost", 6666))
+        s.close()
+        return None  # Already running
+    except (ConnectionRefusedError, OSError):
+        pass
+    proc = subprocess.Popen(
+        ["openocd", "-f", f"interface/{{interface}}.cfg", "-f", f"target/{{target}}.cfg"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    time.sleep(1)  # Wait for server to start
+    return proc  # Caller can proc.terminate() when done
+```"""
+    else:
+        start_block = """
 **Start OpenOCD** (run in a separate terminal — it stays running as a server):
 
 ```bash
 openocd -f interface/cmsis-dap.cfg -f target/stm32f4x.cfg
 ```
 
-Replace the interface and target config files to match your debug probe and chip. Common interfaces: `cmsis-dap.cfg`, `stlink.cfg`, `jlink.cfg`. Common targets: `stm32f4x.cfg`, `nrf52.cfg`, `esp32.cfg`, `rp2040.cfg`.
+Replace the interface and target config files to match your debug probe and chip. Common interfaces: `cmsis-dap.cfg`, `stlink.cfg`, `jlink.cfg`. Common targets: `stm32f4x.cfg`, `nrf52.cfg`, `esp32.cfg`, `rp2040.cfg`."""
+
+    flash_iface = jtag_config.interface if jtag_config else "cmsis-dap"
+    flash_target = jtag_config.target if jtag_config else "stm32f4x"
+
+    return f"""
+### JTAG/SWD: Direct Memory & Register Access
+
+Use OpenOCD to inspect CPU state, read registers and memory, diagnose crashes, and flash firmware. This is the right tool when the board crashes, stops responding, hits a HardFault, or you need to inspect peripheral registers directly.
+{start_block}
 
 **Connect and inspect** via the TCL RPC port (6666):
 
@@ -418,7 +554,7 @@ ocd.close()
 **One-shot flash and verify** (no persistent server needed):
 
 ```bash
-openocd -f interface/cmsis-dap.cfg -f target/stm32f4x.cfg \\
+openocd -f interface/{flash_iface}.cfg -f target/{flash_target}.cfg \\
   -c "program firmware.elf verify reset exit"
 ```
 
@@ -435,6 +571,299 @@ openocd -f interface/cmsis-dap.cfg -f target/stm32f4x.cfg \\
 - Bit 0 (IACCVIOL): instruction access violation
 
 If OpenOCD cannot connect or returns errors, ask the user to verify that the JTAG/SWD debug probe is connected to the board and that the correct interface/target config files are being used."""
+
+
+def _gdb_binary_for_board(board_name: str) -> str:
+    """Return the correct GDB binary for the given board."""
+    name = board_name.lower()
+    if "esp32" in name:
+        # ESP32-C3, C6, H2 are RISC-V; all others are Xtensa
+        for suffix in ("c3", "c6", "h2"):
+            if suffix in name:
+                return "riscv32-esp-elf-gdb"
+        return "xtensa-esp-elf-gdb"
+    return "arm-none-eabi-gdb"
+
+
+def _gdb_section(board_name: str, jtag_config: JtagConfig | None = None) -> str:
+    """GDB source-level debugging section."""
+    gdb = _gdb_binary_for_board(board_name)
+
+    if jtag_config:
+        iface = jtag_config.interface
+        target = jtag_config.target
+        openocd_setup = f"""Before connecting GDB, ensure OpenOCD is running (see the `ensure_openocd()` helper above, or start it manually):
+
+```bash
+openocd -f interface/{iface}.cfg -f target/{target}.cfg
+```"""
+    else:
+        openocd_setup = """Before connecting GDB, ensure OpenOCD is running:
+
+```bash
+openocd -f interface/<probe>.cfg -f target/<chip>.cfg
+```"""
+
+    return f"""
+### GDB: Source-Level Debugging
+
+Use GDB when you need **source-level** insight: symbolic breakpoints, backtraces with function names and line numbers, local variable inspection, and stepping through C code. The TCL RPC section above is better for quick register/memory reads at known addresses; GDB is better for understanding *why* code misbehaves.
+
+**GDB binary for this board:** `{gdb}`
+
+**Compile with debug symbols** — add `-g` to your compiler flags (e.g., `-DCMAKE_BUILD_TYPE=Debug` or `build_flags = -g` in platformio.ini). Without `-g`, GDB can still show assembly and registers but not source lines or variable names.
+
+{openocd_setup}
+
+#### Batch Mode (Recommended for Automation)
+
+Run a single GDB command sequence and exit. Ideal for quick checks — the agent can parse stdout directly:
+
+```bash
+{gdb} -batch -ex "target remote :3333" -ex "monitor reset halt" -ex "bt" build/firmware.elf
+```
+
+Multiple `-ex` flags chain commands:
+
+```bash
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "monitor reset halt" \\
+  -ex "info registers" \\
+  -ex "bt full" \\
+  build/firmware.elf
+```
+
+#### Script Mode
+
+For reusable command sequences, write a `.gdb` file and run with `-x`:
+
+```
+# debug_session.gdb
+target remote :3333
+monitor reset halt
+break main
+continue
+bt full
+info locals
+quit
+```
+
+```bash
+{gdb} -batch -x debug_session.gdb build/firmware.elf
+```
+
+#### Interactive Python Subprocess
+
+For multi-step investigations where you need to read GDB output, make decisions, and send the next command:
+
+```python
+import subprocess
+
+proc = subprocess.Popen(
+    ["{gdb}", "--interpreter=mi2", "-q", "build/firmware.elf"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    text=True,
+)
+
+def gdb_cmd(cmd):
+    proc.stdin.write(cmd + "\\n")
+    proc.stdin.flush()
+    output = []
+    while True:
+        line = proc.stdout.readline()
+        if not line or line.strip() == "(gdb)":
+            break
+        output.append(line.strip())
+    return "\\n".join(output)
+
+gdb_cmd("target remote :3333")
+gdb_cmd("monitor reset halt")
+bt = gdb_cmd("bt full")
+print(bt)
+# ... decide next action based on bt output ...
+proc.terminate()
+```
+
+#### Essential GDB Commands
+
+| Command | Description |
+|---|---|
+| `target remote :3333` | Connect to OpenOCD GDB server |
+| `monitor reset halt` | Reset board and halt (via OpenOCD) |
+| `break <func>` or `break file.c:line` | Set a breakpoint by symbol or source location |
+| `next` | Step over (execute one source line) |
+| `step` | Step into (enter function calls) |
+| `finish` | Run until current function returns |
+| `continue` | Resume execution |
+| `bt` | Backtrace — show call stack with function names |
+| `bt full` | Backtrace with local variables at each frame |
+| `print <var>` | Print a variable's value |
+| `info locals` | Show all local variables in current frame |
+| `info args` | Show function arguments |
+| `info registers` | Show CPU registers |
+| `x/Nxw <addr>` | Examine N words of memory at address |
+| `watch <var>` | Hardware watchpoint — break when variable changes |
+| `monitor reset halt` | Reset and halt (via OpenOCD monitor command) |
+
+#### Iterative Debugging
+
+**Key principle:** OpenOCD stays running as a persistent server. Each GDB batch invocation is independent — run many in sequence, each building on findings from the previous one. Treat debugging as an iterative investigation, not a one-shot operation.
+
+**Decision tree — what symptom are you seeing?**
+
+```
+Board crashes / HardFault / stops responding
+  → Run Crash Investigation workflow
+  → Backtrace shows crash in peripheral_init()?
+      → Chain to: Peripheral Not Responding workflow
+  → Backtrace shows crash with bad pointer?
+      → Chain to: Watchpoint workflow (watch the pointer variable)
+  → Backtrace shows crash with wrong value from sensor?
+      → Chain to: Variable Tracing workflow
+
+Wrong output values / incorrect behavior
+  → Run Variable Tracing workflow
+  → Variable correct at entry but wrong after calculation?
+      → Use step/next to narrow down the exact line
+  → Variable already wrong when received from peripheral?
+      → Chain to: Peripheral Not Responding workflow
+
+Peripheral not responding / no data
+  → Run Peripheral Not Responding workflow
+  → Registers configured correctly but no response?
+      → Check with oscilloscope/logic analyzer for electrical issues
+  → Register values don't match what was written?
+      → Chain to: Watchpoint workflow (watch the config register address)
+
+Intermittent / timing issues
+  → Run Watchpoint workflow with conditional breakpoints
+  → Watchpoint triggers in ISR context?
+      → Check ISR-safety rules (FreeRTOS FromISR variants, etc.)
+```
+
+**Chaining example** — a concrete multi-step investigation:
+
+```bash
+# Step 1: Crash investigation reveals crash in spi_transfer()
+{gdb} -batch -ex "target remote :3333" -ex "bt full" build/firmware.elf
+# Output: #0 spi_transfer (data=0x0) at src/spi.c:45  ← null pointer!
+
+# Step 2: Who set data to NULL? Trace it with a watchpoint
+{gdb} -batch -ex "target remote :3333" -ex "monitor reset halt" \\
+  -ex "watch spi_tx_buffer" -ex "continue" -ex "bt" build/firmware.elf
+# Output: Hardware watchpoint hit — called from sensor_read() at src/sensor.c:23
+
+# Step 3: Step through sensor_read() to see why buffer is NULL
+{gdb} -batch -ex "target remote :3333" -ex "monitor reset halt" \\
+  -ex "break sensor_read" -ex "continue" \\
+  -ex "info locals" -ex "next" -ex "info locals" -ex "next" -ex "info locals" \\
+  build/firmware.elf
+# Output: buffer was allocated but freed early due to error path
+
+# Step 4: Agent now knows the root cause — fix the code
+```
+
+#### Workflow: Crash Investigation
+
+When the board crashes, hits a HardFault, or stops responding:
+
+```bash
+# 1. Get backtrace and register state
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "bt full" \\
+  -ex "info registers" \\
+  build/firmware.elf
+
+# 2. Read Cortex-M fault status registers
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "x/1xw 0xE000ED28" \\
+  -ex "x/1xw 0xE000ED2C" \\
+  build/firmware.elf
+
+# 3. Set breakpoint before crash location and rerun
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "monitor reset halt" \\
+  -ex "break <crash_function>" \\
+  -ex "continue" \\
+  -ex "info locals" \\
+  -ex "next" -ex "info locals" \\
+  -ex "next" -ex "info locals" \\
+  build/firmware.elf
+```
+
+#### Workflow: Variable/Sensor Tracing
+
+When outputs are wrong or sensor values are unexpected:
+
+```bash
+# Break at the function and print variables on each call
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "monitor reset halt" \\
+  -ex "break sensor_read" \\
+  -ex "commands" -ex "info locals" -ex "info args" -ex "continue" -ex "end" \\
+  -ex "continue" \\
+  build/firmware.elf
+```
+
+#### Workflow: Peripheral Not Responding
+
+When a peripheral (SPI, I2C, UART, etc.) doesn't respond or returns wrong data:
+
+```bash
+# 1. Break at peripheral init and step through register writes
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "monitor reset halt" \\
+  -ex "break peripheral_init" \\
+  -ex "continue" \\
+  -ex "info locals" \\
+  -ex "next" -ex "next" -ex "next" \\
+  -ex "info locals" \\
+  build/firmware.elf
+
+# 2. Examine peripheral status register (replace address from datasheet)
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "x/1xw 0x40013000" \\
+  build/firmware.elf
+
+# 3. Check clock enable bits (RCC peripheral clock register)
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "x/1xw 0x40023844" \\
+  build/firmware.elf
+```
+
+Compare register values with the datasheet. Common issues: clock not enabled, wrong alternate-function mapping, incorrect prescaler.
+
+#### Workflow: Watchpoints & Conditional Breakpoints
+
+For intermittent issues, data corruption, or race conditions:
+
+```bash
+# Watch a variable — break when it changes
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "monitor reset halt" \\
+  -ex "watch my_variable" \\
+  -ex "continue" \\
+  -ex "bt" -ex "info locals" \\
+  build/firmware.elf
+
+# Conditional breakpoint — only break when condition is true
+{gdb} -batch \\
+  -ex "target remote :3333" \\
+  -ex "monitor reset halt" \\
+  -ex "break my_func if counter > 100" \\
+  -ex "continue" \\
+  -ex "info locals" \\
+  build/firmware.elf
+```"""
 
 
 def _scope_section() -> str:
